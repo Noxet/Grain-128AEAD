@@ -7,8 +7,8 @@
 typedef struct {
 	uint8_t lfsr[128];
 	uint8_t nfsr[128];
-	uint8_t auth_acc[32];
-	uint8_t auth_sr[32];
+	uint8_t auth_acc[64];
+	uint8_t auth_sr[64];
 } grain_state;
 
 // TODO: add struct with output: keystream and optionally macstream and tag

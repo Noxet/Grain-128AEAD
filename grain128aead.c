@@ -17,7 +17,7 @@ uint8_t auth_mode = 0;
 void init_grain(grain_state *grain, uint8_t *key, uint8_t *iv)
 {
 	// TODO: do not hardcode these values
-	grain->lfsr[0] = 1;
+	grain->lfsr[0] = 0;
 	for (int i = 1; i < 96; i++) {
 		grain->lfsr[i] = 0;
 	}
@@ -176,10 +176,10 @@ void generate_keystream(grain_state *grain, grain_data *data)
 		}
 
 		printf("accumulator: ");
-		print_stream(grain->auth_acc, 4);
+		print_stream(grain->auth_acc, 8);
 
 		printf("shift register: ");
-		print_stream(grain->auth_sr, 4);
+		print_stream(grain->auth_sr, 8);
 
 		uint8_t ks[STREAM_BYTES * 8];		// keystream array
 		uint16_t ks_cnt = 0;
@@ -217,14 +217,17 @@ void generate_keystream(grain_state *grain, grain_data *data)
 		printf("macstream: ");
 		print_stream(ms, STREAM_BYTES);
 
-		printf("accumulator: ");
-		print_stream(grain->auth_acc, 4);
+		printf("tag: ");
+		print_stream(grain->auth_acc, 8);
 	} else {
 		uint8_t ks[STREAM_BYTES * 8];
+		uint16_t ks_cnt = 0;
 
 		/* generate keystream */
-		for (int i = 0; i < STREAM_BYTES * 8; i++) {
-			ks[i] = next_z(grain);
+		for (int i = 0; i < 2 * STREAM_BYTES * 8; i++) {
+			if (i % 2 == 0) {
+				ks[ks_cnt++] = next_z(grain);
+			}
 		}
 
 		printf("keystream: ");
