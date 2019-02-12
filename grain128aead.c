@@ -11,15 +11,16 @@
  */
 
 uint8_t init_rounds = 0;
-uint8_t auth_mode = 0;
 
 
 void init_grain(grain_state *grain, uint8_t *key, uint8_t *iv)
 {
-	// TODO: do not hardcode these values
-	grain->lfsr[0] = 0;
-	for (int i = 1; i < 96; i++) {
-		grain->lfsr[i] = 0;
+	// expand the packed bytes and place one bit per array cell (like a flip flop in HW)
+	for (int i = 0; i < 12; i++) {
+		for (int j = 0; j < 8; j++) {
+			grain->lfsr[8 * i + j] = (iv[i] & (1 << (7-j))) >> (7-j);
+
+		}
 	}
 
 	for (int i = 96; i < 127; i++) {
@@ -27,13 +28,14 @@ void init_grain(grain_state *grain, uint8_t *key, uint8_t *iv)
 	}
 
 	grain->lfsr[127] = 0;
-	if (grain->lfsr[0] == 1) auth_mode = 1;
 
-	for (int i = 0; i < 128; i++) {
-		grain->nfsr[i] = 0;
+	for (int i = 0; i < 16; i++) {
+		for (int j = 0; j < 8; j++) {
+			grain->nfsr[8 * i + j] = (key[i] & (1 << (7-j))) >> (7-j);
+		}
 	}
 
-	for (int i = 0; i < 32; i++) {
+	for (int i = 0; i < 64; i++) {
 		grain->auth_acc[i] = 0;
 		grain->auth_sr[i] = 0;
 	}
@@ -41,12 +43,13 @@ void init_grain(grain_state *grain, uint8_t *key, uint8_t *iv)
 
 void init_data(grain_data *data, uint8_t *msg, uint32_t msg_len)
 {
-	// always pad data with a 1
-	data->message = (uint8_t *) malloc(msg_len + 1);
+	// allocate enough space for message, including the padding byte, 0x80
+	data->message = (uint8_t *) calloc(8 * STREAM_BYTES + 8, 1);
 	for (uint32_t i = 0; i < msg_len; i++) {
 		data->message[i] = msg[i];
 	}
 
+	// always pad data with the byte 0x80
 	data->message[msg_len] = 1;
 }
 
@@ -165,75 +168,59 @@ void print_stream(uint8_t *stream, uint8_t byte_size)
 
 void generate_keystream(grain_state *grain, grain_data *data)
 {
-	if (auth_mode) {
-		/* inititalize the accumulator and shift reg. using the first 64 bits */
-		for (int i = 0; i < 64; i++) {
-			grain->auth_acc[i] = next_z(grain);
-		}
-
-		for (int i = 0; i < 64; i++) {
-			grain->auth_sr[i] = next_z(grain);
-		}
-
-		printf("accumulator: ");
-		print_stream(grain->auth_acc, 8);
-
-		printf("shift register: ");
-		print_stream(grain->auth_sr, 8);
-
-		uint8_t ks[STREAM_BYTES * 8];		// keystream array
-		uint16_t ks_cnt = 0;
-		uint8_t ms[STREAM_BYTES * 8];		// macstream array
-		uint16_t ms_cnt = 0;
-		uint8_t pre[2 * STREAM_BYTES * 8];	// pre-output
-		uint16_t pre_cnt = 0;
-
-		/* generate keystream */
-		for (int i = 0; i < STREAM_BYTES; i++) {
-			/* every second bit is used for keystream, the others for MAC */
-			for (int j = 0; j < 16; j++) {
-				uint8_t z_next = next_z(grain);
-				if (j % 2 == 0) {
-					ks[ks_cnt] = z_next;
-					ks_cnt++;
-				} else {
-					ms[ms_cnt] = z_next;
-					if (data->message[ms_cnt] == 1) {
-						accumulate(grain);
-					}
-					auth_shift(grain->auth_sr, z_next);
-					ms_cnt++;
-				}
-				pre[pre_cnt++] = z_next;	// pre-output includes all bits
-			}
-		}
-
-		printf("pre-output: ");
-		print_stream(pre, 2 * STREAM_BYTES);
-
-		printf("keystream: ");
-		print_stream(ks, STREAM_BYTES);
-
-		printf("macstream: ");
-		print_stream(ms, STREAM_BYTES);
-
-		printf("tag: ");
-		print_stream(grain->auth_acc, 8);
-	} else {
-		uint8_t ks[STREAM_BYTES * 8];
-		uint16_t ks_cnt = 0;
-
-		/* generate keystream */
-		for (int i = 0; i < 2 * STREAM_BYTES * 8; i++) {
-			if (i % 2 == 0) {
-				ks[ks_cnt++] = next_z(grain);
-			}
-		}
-
-		printf("keystream: ");
-		print_stream(ks, STREAM_BYTES);
-		printf("\n");
+	/* inititalize the accumulator and shift reg. using the first 64 bits */
+	for (int i = 0; i < 64; i++) {
+		grain->auth_acc[i] = next_z(grain);
 	}
+
+	for (int i = 0; i < 64; i++) {
+		grain->auth_sr[i] = next_z(grain);
+	}
+
+	printf("accumulator: ");
+	print_stream(grain->auth_acc, 8);
+
+	printf("shift register: ");
+	print_stream(grain->auth_sr, 8);
+
+	uint8_t ks[STREAM_BYTES * 8];		// keystream array
+	uint16_t ks_cnt = 0;
+	uint8_t ms[STREAM_BYTES * 8];		// macstream array
+	uint16_t ms_cnt = 0;
+	uint8_t pre[2 * STREAM_BYTES * 8];	// pre-output
+	uint16_t pre_cnt = 0;
+
+	/* generate keystream */
+	for (int i = 0; i < STREAM_BYTES; i++) {
+		/* every second bit is used for keystream, the others for MAC */
+		for (int j = 0; j < 16; j++) {
+			uint8_t z_next = next_z(grain);
+			if (j % 2 == 0) {
+				ks[ks_cnt] = z_next;
+				ks_cnt++;
+			} else {
+				ms[ms_cnt] = z_next;
+				if (data->message[ms_cnt] == 1) {
+					accumulate(grain);
+				}
+				auth_shift(grain->auth_sr, z_next);
+				ms_cnt++;
+			}
+			pre[pre_cnt++] = z_next;	// pre-output includes all bits
+		}
+	}
+
+	printf("pre-output: ");
+	print_stream(pre, 2 * STREAM_BYTES);
+
+	printf("keystream: ");
+	print_stream(ks, STREAM_BYTES);
+
+	printf("macstream: ");
+	print_stream(ms, STREAM_BYTES);
+
+	printf("tag: ");
+	print_stream(grain->auth_acc, 8);
 }
 
 
@@ -241,10 +228,17 @@ int main()
 {
 	grain_state grain;
 	grain_data data;
+	
+	//uint8_t key[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
+	//uint8_t iv[] = {0x81, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
+
+	uint8_t key[16] = { 0 };
+	uint8_t iv[12] = { 0 };
+	//iv[0] = 0x80;
 
 	uint8_t msg[0];
 
-	init_grain(&grain, NULL, NULL);
+	init_grain(&grain, key, iv);
 	init_data(&data, msg, sizeof(msg));
 	
 	/* initialize grain and skip output */
