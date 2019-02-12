@@ -259,4 +259,8 @@ int main()
 	init_rounds = 0;
 
 	generate_keystream(&grain, &data);
+
+	free(data.message);
+
+	return 0;
 }
