@@ -10,7 +10,7 @@
  * Do this either here or during compilation with -D flag.
  */
 
-uint8_t init_rounds = 0;
+uint8_t grain_round;
 
 
 void init_grain(grain_state *grain, uint8_t *key, uint8_t *iv)
@@ -111,7 +111,7 @@ void accumulate(grain_state *grain)
 	}
 }
 
-uint8_t next_z(grain_state *grain)
+uint8_t next_z(grain_state *grain, uint8_t keybit)
 {
 	uint8_t lfsr_fb = next_lfsr_fb(grain);
 	uint8_t nfsr_fb = next_nfsr_fb(grain);
@@ -130,10 +130,13 @@ uint8_t next_z(grain_state *grain)
 	uint8_t lfsr_out;
 
 	/* feedback y if we are in the initialization instance */
-	if (init_rounds) {
+	if (grain_round == INIT) {
 		lfsr_out = shift(grain->lfsr, lfsr_fb ^ y);
 		shift(grain->nfsr, nfsr_fb ^ lfsr_out ^ y);
-	} else {
+	} else if (grain_round == FP1) {
+		lfsr_out = shift(grain->lfsr, lfsr_fb ^ keybit);
+		shift(grain->nfsr, nfsr_fb ^ lfsr_out);
+	} else if (grain_round == NORMAL) {
 		lfsr_out = shift(grain->lfsr, lfsr_fb);
 		shift(grain->nfsr, nfsr_fb ^ lfsr_out);
 	}
@@ -166,16 +169,29 @@ void print_stream(uint8_t *stream, uint8_t byte_size)
 	printf("\n");
 }
 
-void generate_keystream(grain_state *grain, grain_data *data)
+void generate_keystream(grain_state *grain, grain_data *data, uint8_t *key)
 {
+	grain_round = FP1;
+
+	uint8_t key_idx = 0;
 	/* inititalize the accumulator and shift reg. using the first 64 bits */
-	for (int i = 0; i < 64; i++) {
-		grain->auth_acc[i] = next_z(grain);
+	for (int i = 0; i < 8; i++) {
+		for (int j = 0; j < 8; j++) {
+			uint8_t fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			grain->auth_acc[8 * i + j] = next_z(grain, fp1_fb);
+		}
+		key_idx++;
 	}
 
-	for (int i = 0; i < 64; i++) {
-		grain->auth_sr[i] = next_z(grain);
+	for (int i = 0; i < 8; i++) {
+		for (int j = 0; j < 8; j++) {
+			uint8_t fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			grain->auth_sr[8 * i + j] = next_z(grain, fp1_fb);
+		}
+		key_idx++;
 	}
+
+	grain_round = NORMAL;
 
 	printf("accumulator: ");
 	print_stream(grain->auth_acc, 8);
@@ -194,7 +210,7 @@ void generate_keystream(grain_state *grain, grain_data *data)
 	for (int i = 0; i < STREAM_BYTES; i++) {
 		/* every second bit is used for keystream, the others for MAC */
 		for (int j = 0; j < 16; j++) {
-			uint8_t z_next = next_z(grain);
+			uint8_t z_next = next_z(grain, 0);
 			if (j % 2 == 0) {
 				ks[ks_cnt] = z_next;
 				ks_cnt++;
@@ -229,11 +245,11 @@ int main()
 	grain_state grain;
 	grain_data data;
 	
-	//uint8_t key[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
-	//uint8_t iv[] = {0x81, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
+	uint8_t key[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
+	uint8_t iv[] = {0x81, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
 
-	uint8_t key[16] = { 0 };
-	uint8_t iv[12] = { 0 };
+	//uint8_t key[16] = { 0 };
+	//uint8_t iv[12] = { 0 };
 	//iv[0] = 0x80;
 
 	uint8_t msg[0];
@@ -242,7 +258,7 @@ int main()
 	init_data(&data, msg, sizeof(msg));
 	
 	/* initialize grain and skip output */
-	init_rounds = 1;
+	grain_round = INIT;
 #ifdef INIT
 	printf("init bits: ");
 #endif
@@ -250,15 +266,15 @@ int main()
 #ifdef INIT
 		printf("%d", next_z(&grain));
 #else
-		next_z(&grain);
+		next_z(&grain, 0);
 #endif
 	}
 #ifdef INIT
 	printf("\n");
 #endif
-	init_rounds = 0;
+	grain_round = NORMAL;
 
-	generate_keystream(&grain, &data);
+	generate_keystream(&grain, &data, key);
 
 	free(data.message);
 
