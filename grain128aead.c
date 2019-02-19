@@ -193,10 +193,10 @@ void generate_keystream(grain_state *grain, grain_data *data, uint8_t *key)
 
 	grain_round = NORMAL;
 
-	printf("accumulator: ");
+	printf("accum init:\t");
 	print_stream(grain->auth_acc, 8);
 
-	printf("shift register: ");
+	printf("register init:\t");
 	print_stream(grain->auth_sr, 8);
 
 	uint8_t ks[STREAM_BYTES * 8];		// keystream array
@@ -226,16 +226,16 @@ void generate_keystream(grain_state *grain, grain_data *data, uint8_t *key)
 		}
 	}
 
-	printf("pre-output: ");
+	printf("pre-output:\t");
 	print_stream(pre, 2 * STREAM_BYTES);
 
-	printf("keystream: ");
+	printf("keystream:\t");
 	print_stream(ks, STREAM_BYTES);
 
-	printf("macstream: ");
+	printf("macstream:\t");
 	print_stream(ms, STREAM_BYTES);
 
-	printf("tag: ");
+	printf("tag:\t\t");
 	print_stream(grain->auth_acc, 8);
 }
 
@@ -246,7 +246,7 @@ int main()
 	grain_data data;
 	
 	//uint8_t key[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
-	//uint8_t iv[] = {0x81, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
+	//uint8_t iv[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
 
 
 	//uint8_t key[] = {0x81, 0x27, 0x73, 0x35, 0x11, 0xe9, 0x4c, 0x32, 0x9f, 0x77, 0x1f, 0xe8, 0x31, 0xec, 0x95, 0x55};
@@ -254,13 +254,25 @@ int main()
 
 	uint8_t key[16] = { 0 };
 	uint8_t iv[12] = { 0 };
-	iv[0] = 0x80;
+	//iv[0] = 0x80;
 
 	uint8_t msg[0];
 	//uint8_t msg[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 	//uint8_t msg[8] = {1, 0, 0, 0, 0, 0, 0, 0};
 	//uint8_t msg[8] = {0, 0, 0, 0, 0, 0, 0, 1};
 	//uint8_t msg[8] = {1, 1, 1, 1, 1, 1, 1, 1};
+
+	printf("key:\t\t");
+	for (int i = 0; i < 16; i++) {
+		printf("%02x", key[i]);
+	}
+	printf("\n");
+
+	printf("iv:\t\t");
+	for (int i = 0; i < 12; i++) {
+		printf("%02x", iv[i]);
+	}
+	printf("\n");
 
 	init_grain(&grain, key, iv);
 	init_data(&data, msg, sizeof(msg));

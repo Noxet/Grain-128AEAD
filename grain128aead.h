@@ -1,7 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#define STREAM_BYTES	40
+#define STREAM_BYTES	16
 #define MSG_BYTES		0
 
 enum GRAIN_ROUND {INIT, FP1, NORMAL};
