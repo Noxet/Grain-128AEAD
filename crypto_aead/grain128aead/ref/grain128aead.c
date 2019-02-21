@@ -285,6 +285,7 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 		}
 		c[i] = acc;
 		acc_idx++;
+		*clen += 1;
 	}
 
 	//printf("tag:\t\t");
@@ -304,47 +305,17 @@ int crypto_aead_decrypt(
        const unsigned char *k
      )
 {
-	crypto_aead_encrypt(m, mlen, c, clen, ad, adlen, nsec, npub, k);
+	// mtmp will contain unwanted tag for ciphertext
+	unsigned char *mtmp = (unsigned char *) malloc(clen);
+	crypto_aead_encrypt(mtmp, mlen, c, clen - 8, ad, adlen, nsec, npub, k);
+
+	*mlen -= 8; // remove length of tag
+
+	// copy only plaintext
+	for (unsigned long long i = 0; i < *mlen; i++) {
+		m[i] = mtmp[i];
+	}
+
+	free(mtmp);
 	return 0;
 }
-
-/*
-int main()
-{
-	//uint8_t key[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
-	//uint8_t iv[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
-
-
-	//uint8_t key[] = {0x81, 0x27, 0x73, 0x35, 0x11, 0xe9, 0x4c, 0x32, 0x9f, 0x77, 0x1f, 0xe8, 0x31, 0xec, 0x95, 0x55};
-	//uint8_t iv[] = {0xcc, 0xb5, 0x2f, 0xe4, 0x3e, 0x68, 0xc4, 0x5e, 0x78, 0xb1, 0x96, 0xb2};
-
-	unsigned char key[16] = { 0 };
-	unsigned char iv[12] = { 0 };
-
-	unsigned char msg[2] = { 0xff, 0xff };
-
-	unsigned char c[sizeof(msg) + 8];
-	unsigned long long clen = sizeof(msg) + 8;
-	
-	unsigned char ad[0];
-	unsigned long long adlen = sizeof(ad);
-	
-	crypto_aead_encrypt(&c[0], &clen, msg, sizeof(msg), ad, adlen, NULL, iv, key);
-	
-	
-	printf("message:\t");
-	for (int i = 0; i < sizeof(msg); i++) {
-		printf("%02x", msg[i]);
-	}
-	printf("\n");
-
-	printf("ciphertext:\t");
-	for (unsigned long long i = 0; i < clen; i++) {
-		printf("%02x", c[i]);
-	}
-	printf("\n");
-
-
-	return 0;
-}
-*/
