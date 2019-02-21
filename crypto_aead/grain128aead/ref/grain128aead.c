@@ -1,17 +1,21 @@
+/*
+ * The reference implementation of Grain128-AEAD.
+ * 
+ * Note that this implementation is *not* meant to be run in software.
+ * It is written to be as close to a hardware implementation as possible,
+ * hence it should not be used in benchmarks due to bad performance.
+ *
+ * Jonathan Sönnerup
+ * 2019
+ */
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 #include "grain128aead.h"
 
-/*
- * Define "PRE" to print the pre-output instead of keystream.
- * Define "INIT" to also print the bits during the initialization part.
- * Do this either here or during compilation with -D flag.
- */
-
 uint8_t grain_round;
-
 
 void init_grain(grain_state *grain, const unsigned char *key, const unsigned char *iv)
 {
@@ -147,32 +151,6 @@ uint8_t next_z(grain_state *grain, uint8_t keybit)
 	return y;
 }
 
-void print_state(grain_state *grain)
-{
-	printf("LFSR: ");
-	for (int i = 0; i < 128; i++) {
-		printf("%d", grain->lfsr[i]);
-	}
-	printf("\nNFSR: ");
-	for (int i = 0; i < 128; i++) {
-		printf("%d", grain->nfsr[i]);
-	}
-	printf("\n");
-}
-
-void print_stream(uint8_t *stream, uint8_t byte_size)
-{
-	for (int i = 0; i < byte_size; i++) {
-		uint8_t yi = 0;
-		for (int j = 0; j < 8; j++) {
-			yi = (yi << 1) ^ stream[i * 8 + j];
-		}
-		printf("%02x", yi);
-	}
-	printf("\n");
-}
-
-
 int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 	const unsigned char *m, unsigned long long mlen,
 	const unsigned char *ad, unsigned long long adlen,
@@ -216,12 +194,6 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 	}
 
 	grain_round = NORMAL;
-
-	//printf("accum init:\t");
-	//print_stream(grain.auth_acc, 8);
-
-	//printf("register init:\t");
-	//print_stream(grain.auth_sr, 8);
 
 	unsigned long long ad_cnt = 0;
 	unsigned char adval = 0;
