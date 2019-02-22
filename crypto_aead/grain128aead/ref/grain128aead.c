@@ -260,9 +260,6 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 		*clen += 1;
 	}
 
-	//printf("tag:\t\t");
-	//print_stream(grain.auth_acc, 8);
-
 	free(data.message);
 
 	return 0;
