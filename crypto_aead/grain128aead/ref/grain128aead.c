@@ -43,6 +43,34 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 		grain->auth_acc[i] = 0;
 		grain->auth_sr[i] = 0;
 	}
+
+	/* initialize grain and skip output */
+	grain_round = INIT;
+	for (int i = 0; i < 256; i++) {
+		next_z(grain, 0);
+	}
+
+	grain_round = FP1;
+
+	uint8_t key_idx = 0;
+	/* inititalize the accumulator and shift reg. using the first 64 bits */
+	for (int i = 0; i < 8; i++) {
+		for (int j = 0; j < 8; j++) {
+			uint8_t fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			grain->auth_acc[8 * i + j] = next_z(grain, fp1_fb);
+		}
+		key_idx++;
+	}
+
+	for (int i = 0; i < 8; i++) {
+		for (int j = 0; j < 8; j++) {
+			uint8_t fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			grain->auth_sr[8 * i + j] = next_z(grain, fp1_fb);
+		}
+		key_idx++;
+	}
+
+	grain_round = NORMAL;
 }
 
 void init_data(grain_data *data, const unsigned char *msg, unsigned long long msg_len)
@@ -167,33 +195,6 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 
 	*clen = 0;
 
-	/* initialize grain and skip output */
-	grain_round = INIT;
-	for (int i = 0; i < 256; i++) {
-		next_z(&grain, 0);
-	}
-	
-	grain_round = FP1;
-
-	uint8_t key_idx = 0;
-	/* inititalize the accumulator and shift reg. using the first 64 bits */
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < 8; j++) {
-			uint8_t fp1_fb = (k[key_idx] & (1 << (7-j))) >> (7-j);
-			grain.auth_acc[8 * i + j] = next_z(&grain, fp1_fb);
-		}
-		key_idx++;
-	}
-
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < 8; j++) {
-			uint8_t fp1_fb = (k[key_idx] & (1 << (7-j))) >> (7-j);
-			grain.auth_sr[8 * i + j] = next_z(&grain, fp1_fb);
-		}
-		key_idx++;
-	}
-
-	grain_round = NORMAL;
 
 	unsigned long long ad_cnt = 0;
 	unsigned char adval = 0;
@@ -241,7 +242,7 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 		c[i] = cc;
 		*clen += 1;
 	}
-	
+
 	// generate unused keystream bit
 	next_z(&grain, 0);
 	// the 1 in the padding means accumulation
@@ -274,17 +275,80 @@ int crypto_aead_decrypt(
        const unsigned char *k
      )
 {
-	// mtmp will contain unwanted tag for ciphertext
-	unsigned char *mtmp = (unsigned char *) malloc(clen);
-	crypto_aead_encrypt(mtmp, mlen, c, clen - 8, ad, adlen, nsec, npub, k);
+	grain_state grain;
+	grain_data data;
 
-	*mlen -= 8; // remove length of tag
+	init_grain(&grain, k, npub);
+	init_data(&data, c, clen);
 
-	// copy only plaintext
-	for (unsigned long long i = 0; i < *mlen; i++) {
-		m[i] = mtmp[i];
+	*mlen = 0;
+
+
+	unsigned long long ad_cnt = 0;
+	unsigned char adval = 0;
+
+	/* accumulate tag for associated data only */
+	for (unsigned long long i = 0; i < adlen; i++) {
+		/* every second bit is used for keystream, the others for MAC */
+		for (int j = 0; j < 16; j++) {
+			uint8_t z_next = next_z(&grain, 0);
+			if (j % 2 == 0) {
+				// do not encrypt
+			} else {
+				adval = ad[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
+				if (adval == 1) {
+					accumulate(&grain);
+				}
+				auth_shift(grain.auth_sr, z_next);
+				ad_cnt++;
+			}
+		}
 	}
 
-	free(mtmp);
+	unsigned long long ac_cnt = 0;
+	unsigned long long c_cnt = 0;
+	unsigned char msgbyte = 0;
+	unsigned char msgbit = 0;
+
+	// generate keystream for message, skipping tag
+	for (unsigned long long i = 0; i < clen - 8; i++) {
+		// every second bit is used for keystream, the others for MAC
+		msgbyte = 0;
+		for (int j = 0; j < 8; j++) {
+			uint8_t z_next = next_z(&grain, 0);
+			// decrypt ciphertext
+			msgbit = data.message[c_cnt] ^ z_next;
+			// transform it back to 8 bits per byte
+			msgbyte |= msgbit << (7 - (c_cnt % 8));
+
+			// generate accumulator bit
+			z_next = next_z(&grain, 0);
+			// use the decrypted message bit to control accumulator
+			if (msgbit == 1) {
+				accumulate(&grain);
+			}
+			auth_shift(grain.auth_sr, z_next);
+
+			c_cnt++;
+			ac_cnt++;
+		}
+		m[i] = msgbyte;
+		*mlen += 1;
+	}
+
+
+	// generate unused keystream bit
+	next_z(&grain, 0);
+	// the 1 in the padding means accumulation
+	accumulate(&grain);
+
+	// check MAC
+	if (memcmp(grain.auth_acc, &data.message[8*(clen-8)], 64) != 0) {
+		free(data.message);
+		return -1;
+	}
+
+	free(data.message);
+
 	return 0;
 }
