@@ -10,13 +10,12 @@
  */
 
 #include <stdio.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "grain128aead.h"
 
-uint8_t grain_round;
+unsigned char grain_round;
 
 void init_grain(grain_state *grain, const unsigned char *key, const unsigned char *iv)
 {
@@ -53,11 +52,11 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 
 	grain_round = FP1;
 
-	uint8_t key_idx = 0;
+	unsigned char key_idx = 0;
 	/* inititalize the accumulator and shift reg. using the first 64 bits */
 	for (int i = 0; i < 8; i++) {
 		for (int j = 0; j < 8; j++) {
-			uint8_t fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			unsigned char fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
 			grain->auth_acc[8 * i + j] = next_z(grain, fp1_fb);
 		}
 		key_idx++;
@@ -65,7 +64,7 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 
 	for (int i = 0; i < 8; i++) {
 		for (int j = 0; j < 8; j++) {
-			uint8_t fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			unsigned char fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
 			grain->auth_sr[8 * i + j] = next_z(grain, fp1_fb);
 		}
 		key_idx++;
@@ -77,7 +76,7 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 void init_data(grain_data *data, const unsigned char *msg, unsigned long long msg_len)
 {
 	// allocate enough space for message, including the padding bit 1 (byte 0x80)
-	data->message = (uint8_t *) calloc(8 * msg_len + 1, 1);
+	data->message = (unsigned char *) calloc(8 * msg_len + 1, 1);
 	data->msg_len = 8 * msg_len + 1;
 	for (unsigned long long i = 0; i < msg_len; i++) {
 		for (int j = 0; j < 8; j++) {
@@ -89,13 +88,13 @@ void init_data(grain_data *data, const unsigned char *msg, unsigned long long ms
 	data->message[data->msg_len - 1] = 1;
 }
 
-uint8_t next_lfsr_fb(grain_state *grain)
+unsigned char next_lfsr_fb(grain_state *grain)
 {
  	/* f(x) = 1 + x^32 + x^47 + x^58 + x^90 + x^121 + x^128 */
 	return grain->lfsr[96] ^ grain->lfsr[81] ^ grain->lfsr[70] ^ grain->lfsr[38] ^ grain->lfsr[7] ^ grain->lfsr[0];
 }
 
-uint8_t next_nfsr_fb(grain_state *grain)
+unsigned char next_nfsr_fb(grain_state *grain)
 {
 	return grain->nfsr[96] ^ grain->nfsr[91] ^ grain->nfsr[56] ^ grain->nfsr[26] ^ grain->nfsr[0] ^ (grain->nfsr[84] & grain->nfsr[68]) ^
 			(grain->nfsr[67] & grain->nfsr[3]) ^ (grain->nfsr[65] & grain->nfsr[61]) ^ (grain->nfsr[59] & grain->nfsr[27]) ^
@@ -104,7 +103,7 @@ uint8_t next_nfsr_fb(grain_state *grain)
 			(grain->nfsr[95] & grain->nfsr[93] & grain->nfsr[92] & grain->nfsr[88]);
 }
 
-uint8_t next_h(grain_state *grain)
+unsigned char next_h(grain_state *grain)
 {
 	// h(x) = x0x1 + x2x3 + x4x5 + x6x7 + x0x4x8
 	#define x0 grain->nfsr[12]	// bi+12
@@ -117,13 +116,13 @@ uint8_t next_h(grain_state *grain)
 	#define x7 grain->lfsr[79]	// si+79
 	#define x8 grain->lfsr[94]	// si+94
 
-	uint8_t h_out = (x0 & x1) ^ (x2 & x3) ^ (x4 & x5) ^ (x6 & x7) ^ (x0 & x4 & x8);
+	unsigned char h_out = (x0 & x1) ^ (x2 & x3) ^ (x4 & x5) ^ (x6 & x7) ^ (x0 & x4 & x8);
 	return h_out;
 }
 
-uint8_t shift(uint8_t fsr[128], uint8_t fb)
+unsigned char shift(unsigned char fsr[128], unsigned char fb)
 {
-	uint8_t out = fsr[0];
+	unsigned char out = fsr[0];
 	for (int i = 0; i < 127; i++) {
 		fsr[i] = fsr[i+1];
 	}
@@ -132,7 +131,7 @@ uint8_t shift(uint8_t fsr[128], uint8_t fb)
 	return out;
 }
 
-void auth_shift(uint8_t sr[64], uint8_t fb)
+void auth_shift(unsigned char sr[64], unsigned char fb)
 {
 	for (int i = 0; i < 63; i++) {
 		sr[i] = sr[i+1];
@@ -147,23 +146,23 @@ void accumulate(grain_state *grain)
 	}
 }
 
-uint8_t next_z(grain_state *grain, uint8_t keybit)
+unsigned char next_z(grain_state *grain, unsigned char keybit)
 {
-	uint8_t lfsr_fb = next_lfsr_fb(grain);
-	uint8_t nfsr_fb = next_nfsr_fb(grain);
-	uint8_t h_out = next_h(grain);
+	unsigned char lfsr_fb = next_lfsr_fb(grain);
+	unsigned char nfsr_fb = next_nfsr_fb(grain);
+	unsigned char h_out = next_h(grain);
 
 	/* y = h + s_{i+93} + sum(b_{i+j}), j \in A */
-	uint8_t A[] = {2, 15, 36, 45, 64, 73, 89};
+	unsigned char A[] = {2, 15, 36, 45, 64, 73, 89};
 
-	uint8_t nfsr_tmp = 0;
+	unsigned char nfsr_tmp = 0;
 	for (int i = 0; i < 7; i++) {
 		nfsr_tmp ^= grain->nfsr[A[i]];
 	}
 
-	uint8_t y = h_out ^ grain->lfsr[93] ^ nfsr_tmp;
+	unsigned char y = h_out ^ grain->lfsr[93] ^ nfsr_tmp;
 	
-	uint8_t lfsr_out;
+	unsigned char lfsr_out;
 
 	/* feedback y if we are in the initialization instance */
 	if (grain_round == INIT) {
@@ -240,7 +239,7 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 	for (unsigned long long i = 0; i < aderlen + adlen; i++) {
 		/* every second bit is used for keystream, the others for MAC */
 		for (int j = 0; j < 16; j++) {
-			uint8_t z_next = next_z(&grain, 0);
+			unsigned char z_next = next_z(&grain, 0);
 			if (j % 2 == 0) {
 				// do not encrypt
 			} else {
@@ -266,7 +265,7 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 		// every second bit is used for keystream, the others for MAC
 		cc = 0;
 		for (int j = 0; j < 16; j++) {
-			uint8_t z_next = next_z(&grain, 0);
+			unsigned char z_next = next_z(&grain, 0);
 			if (j % 2 == 0) {
 				// transform it back to 8 bits per byte
 				cc |= (data.message[m_cnt++] ^ z_next) << (7 - (c_cnt % 8));
@@ -336,7 +335,7 @@ int crypto_aead_decrypt(
 	for (unsigned long long i = 0; i < aderlen + adlen; i++) {
 		/* every second bit is used for keystream, the others for MAC */
 		for (int j = 0; j < 16; j++) {
-			uint8_t z_next = next_z(&grain, 0);
+			unsigned char z_next = next_z(&grain, 0);
 			if (j % 2 == 0) {
 				// do not encrypt
 			} else {
@@ -362,7 +361,7 @@ int crypto_aead_decrypt(
 		// every second bit is used for keystream, the others for MAC
 		msgbyte = 0;
 		for (int j = 0; j < 8; j++) {
-			uint8_t z_next = next_z(&grain, 0);
+			unsigned char z_next = next_z(&grain, 0);
 			// decrypt ciphertext
 			msgbit = data.message[c_cnt] ^ z_next;
 			// transform it back to 8 bits per byte
