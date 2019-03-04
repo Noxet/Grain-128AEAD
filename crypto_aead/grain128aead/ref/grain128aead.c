@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "grain128aead.h"
 
@@ -179,6 +180,36 @@ uint8_t next_z(grain_state *grain, uint8_t keybit)
 	return y;
 }
 
+int encode_der(unsigned long long len, unsigned char **der)
+{
+	unsigned long long len_tmp;
+	int der_len = 0;
+
+	if (len < 128) {
+		*der = malloc(1);
+		(*der)[0] = len;
+		return 1;
+	}
+
+	len_tmp = len;
+	do {
+		len_tmp >>= 8;
+		der_len++;
+	} while (len != 0);
+
+	// one extra byte to describe the number of bytes used
+	*der = malloc(der_len + 1);
+	(*der)[0] = 0x80 | der_len;
+
+	len_tmp = len;
+	for (int i = der_len; i > 0; i--) {
+		(*der)[i] = len_tmp & 0xff;	// mod 256
+		len_tmp >>= 8;
+	}
+
+	return der_len + 1;
+}
+
 int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 	const unsigned char *m, unsigned long long mlen,
 	const unsigned char *ad, unsigned long long adlen,
@@ -195,19 +226,25 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 
 	*clen = 0;
 
-
+	// authenticate adlen by prepeding to ad, using DER encoding
+	unsigned char *ader;
+	int aderlen = encode_der(adlen, &ader);
+	// append ad to buffer
+	ader = realloc(ader, aderlen + adlen);
+	memcpy(ader + aderlen, ad, adlen);
+	
 	unsigned long long ad_cnt = 0;
 	unsigned char adval = 0;
 
 	/* accumulate tag for associated data only */
-	for (unsigned long long i = 0; i < adlen; i++) {
+	for (unsigned long long i = 0; i < aderlen + adlen; i++) {
 		/* every second bit is used for keystream, the others for MAC */
 		for (int j = 0; j < 16; j++) {
 			uint8_t z_next = next_z(&grain, 0);
 			if (j % 2 == 0) {
 				// do not encrypt
 			} else {
-				adval = ad[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
+				adval = ader[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
 				if (adval == 1) {
 					accumulate(&grain);
 				}
@@ -216,6 +253,8 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 			}
 		}
 	}
+
+	free(ader);
 
 	unsigned long long ac_cnt = 0;
 	unsigned long long m_cnt = 0;
@@ -282,20 +321,26 @@ int crypto_aead_decrypt(
 	init_data(&data, c, clen);
 
 	*mlen = 0;
-
+	
+	// authenticate adlen by prepeding to ad, using DER encoding
+	unsigned char *ader;
+	int aderlen = encode_der(adlen, &ader);
+	// append ad to buffer
+	ader = realloc(ader, aderlen + adlen);
+	memcpy(ader + aderlen, ad, adlen);
 
 	unsigned long long ad_cnt = 0;
 	unsigned char adval = 0;
 
 	/* accumulate tag for associated data only */
-	for (unsigned long long i = 0; i < adlen; i++) {
+	for (unsigned long long i = 0; i < aderlen + adlen; i++) {
 		/* every second bit is used for keystream, the others for MAC */
 		for (int j = 0; j < 16; j++) {
 			uint8_t z_next = next_z(&grain, 0);
 			if (j % 2 == 0) {
 				// do not encrypt
 			} else {
-				adval = ad[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
+				adval = ader[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
 				if (adval == 1) {
 					accumulate(&grain);
 				}
@@ -304,6 +349,8 @@ int crypto_aead_decrypt(
 			}
 		}
 	}
+
+	free(ader);
 
 	unsigned long long ac_cnt = 0;
 	unsigned long long c_cnt = 0;
