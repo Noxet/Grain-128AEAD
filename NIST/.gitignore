@@ -1,4 +1,5 @@
 genkat_aead
 grain128aead
+grain128aead_32p
 **/*.tar*
 **/*.zip
