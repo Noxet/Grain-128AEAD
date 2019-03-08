@@ -11,29 +11,48 @@ void print_state(grain_ctx *grain)
 
 	printf("NFSR: ");
 	for (int i = 0; i < 16; i++) {
-		printf("%02x", *(nfsr + i));
+		u8 n = 0;
+		// print with LSB first
+		for (int j = 0; j < 8; j++) {
+			n |= (((*(nfsr + i)) >> j) & 1) << (7-j);
+		}
+		printf("%02x", n);
 	}
 	printf("\nLFSR: ");
 	for (int i = 0; i < 16; i++) {
-		printf("%02x", *(lfsr + i));
+		u8 l = 0;
+		for (int j = 0; j < 8; j++) {
+			l |= (((*(lfsr + i)) >> j) & 1) << (7-j);
+		}
+		printf("%02x", l);
 	}
 	printf("\n");
+}
+
+void print_ks(u32 ks)
+{
+	u32 n = 0;
+	for (int i = 0; i < 32; i++) {
+		n |= ((ks >> i) & 1) << (31-i);
+	}
+	printf("%08x", n);
 }
 
 
 u32 next_keystream(grain_ctx *grain)
 {
-	u64 ln0 = *(u64 *) (grain->lptr),
-	    ln1 = *(u64 *) (grain->lptr + 1),
-	    ln2 = *(u64 *) (grain->lptr + 2),
-	    ln3 = *(u64 *) (grain->lptr + 3);
-	u64 nn0 = *(u64 *) (grain->nptr),
-	    nn1 = *(u64 *) (grain->nptr + 1),
-	    nn2 = *(u64 *) (grain->nptr + 2),
-	    nn3 = *(u64 *) (grain->nptr + 1);
+	u64 ln0 = (((u64) *(grain->lptr + 1)) << 32) | *(grain->lptr),
+	    ln1 = (((u64) *(grain->lptr + 2)) << 32) | *(grain->lptr + 1),
+	    ln2 = (((u64) *(grain->lptr + 3)) << 32) | *(grain->lptr + 2),
+	    ln3 = (((u64) *(grain->lptr + 3)));
+	u64 nn0 = (((u64) *(grain->nptr + 1)) << 32) | *(grain->nptr),
+	    nn1 = (((u64) *(grain->nptr + 2)) << 32) | *(grain->nptr + 1),
+	    nn2 = (((u64) *(grain->nptr + 3)) << 32) | *(grain->nptr + 2),
+	    nn3 = (((u64) *(grain->nptr + 3)));
 
 	// f
 	grain->lfsr[grain->count] = (ln0 ^ ln3) ^ ((ln1 ^ ln2) >> 6) ^ (ln0 >> 7) ^ (ln2 >> 17);
+
 	// g                        s0    b0        b26       b96       b56             b91 + b27b59
 	grain->nfsr[grain->count] = ln0 ^ nn0 ^ (nn0 >> 26) ^ nn3 ^ (nn1 >> 24) ^ (((nn0 & nn1) ^ nn2) >> 27) ^
 				//     b3b67                   b11b13                        b17b18
@@ -51,7 +70,7 @@ u32 next_keystream(grain_ctx *grain)
 
 	return (nn0 >> 2) ^ (nn0 >> 15) ^ (nn1 >> 4) ^ (nn1 >> 13) ^ nn2 ^ (nn2 >> 9) ^ (nn2 >> 25) ^ (ln2 >> 29) ^
 		((nn0 >> 12) & (ln0 >> 8)) ^ ((ln0 >> 13) & (ln0 >> 20)) ^ ((nn2 >> 31) & (ln1 >> 10)) ^
-		((ln1 >> 28) & (ln2 >> 15)) ^ ((nn0 >> 12) & (nn2 >> 31) & (ln2 >> 30));
+		((ln1 >> 28) & (ln2 >> 15)) ^ ((nn0 >> 12) & (nn2 >> 31) & (ln2 >> 30)); // ln2 >> 30
 }
 
 void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
@@ -72,12 +91,16 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	grain->nptr = grain->nfsr;
 	grain->lptr = grain->lfsr;
 
+	printf("pre-init:\n");
+	print_state(grain);
+
+	printf("init:\n");
 	register u32 ks;
 	for (int i = 0; i < 8; i++) {
 		ks = next_keystream(grain);
 		grain->nfsr[i + 4] ^= ks;
 		grain->lfsr[i + 4] ^= ks;
-		//print_state(grain);
+		print_state(grain);
 	}
 }
 
@@ -108,14 +131,24 @@ int main()
 	u8 c[sizeof(m) + 8];
 	unsigned long long clen;
 	*/
-	u8 k[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-	u8 npub[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+	//u8 k[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+	//u8 npub[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+	u8 k[16] = { 0 };
+	u8 npub[12] = { 0 };
 	
 	grain_init(&grain, k, npub);
 	print_state(&grain);
 
 	next_keystream(&grain);
 	print_state(&grain);
+
+	printf("ks: ");
+	for (int i = 0; i < 8; i++) {
+		u32 ks = next_keystream(&grain);
+		//print_ks(ks);
+		printf("%08x", ks);
+	}
+	printf("\n");
 	
 	
 	//crypto_aead_encrypt(c, &clen, m, mlen, NULL, 0, NULL, npub, k);
