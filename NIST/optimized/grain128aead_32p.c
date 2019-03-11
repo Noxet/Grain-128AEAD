@@ -85,7 +85,7 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	*(u32 *) (grain->lfsr) = *(u32 *) (iv);
 	*(u32 *) (grain->lfsr + 1) = *(u32 *) (iv + 4);
 	*(u32 *) (grain->lfsr + 2) = *(u32 *) (iv + 8);
-	*(u32 *) (grain->lfsr + 3) = (u32) 0xfeffffff;
+	*(u32 *) (grain->lfsr + 3) = (u32) 0x7fffffff;
 
 	grain->count = 4;
 	grain->nptr = grain->nfsr;
