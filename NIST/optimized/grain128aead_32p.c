@@ -105,16 +105,10 @@ u32 next_keystream(grain_ctx *grain)
 
 void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 {
-	// load key 32 bits at a time
-	*(u32 *) (grain->nfsr) = *(u32 *) (key);
-	*(u32 *) (grain->nfsr + 1) = *(u32 *) (key + 4);
-	*(u32 *) (grain->nfsr + 2) = *(u32 *) (key + 8);
-	*(u32 *) (grain->nfsr + 3) = *(u32 *) (key + 12);
 	
-	// load IV along with padding
-	*(u32 *) (grain->lfsr) = *(u32 *) (iv);
-	*(u32 *) (grain->lfsr + 1) = *(u32 *) (iv + 4);
-	*(u32 *) (grain->lfsr + 2) = *(u32 *) (iv + 8);
+	// load key, and IV along with padding
+	memcpy(grain->nfsr, key, 16);
+	memcpy(grain->lfsr, iv, 12);
 	*(u32 *) (grain->lfsr + 3) = (u32) 0x7fffffff; // 0xfffffffe in little endian, LSB first
 
 	grain->count = 4;
@@ -170,6 +164,26 @@ void grain_reinit(grain_ctx *grain)
 	grain->count = 4;
 }
 
+uint16_t compress_even(uint32_t num)
+{
+	// compress x using the mask 0xAAAAAAAA
+	uint32_t mv0 = 0x22222222;
+	uint32_t mv1 = 0x18181818;
+	uint32_t mv2 = 0x07800780;
+	uint32_t mv3 = 0x007f8000;
+	uint32_t mv4 = 0x80000000;
+	uint32_t t;
+
+	uint32_t x = num & 0xAAAAAAAA;
+	t = x & mv0; x = x ^ t | (t >> 1);
+	t = x & mv1; x = x ^ t | (t >> 2);
+	t = x & mv2; x = x ^ t | (t >> 4);
+	t = x & mv3; x = x ^ t | (t >> 8);
+	t = x & mv4; x = x ^ t | (t >> 16);
+
+	return (uint16_t) x;
+}
+
 int crypto_aead_encrypt(
 	unsigned char *c, unsigned long long *clen,
 	const unsigned char *m, unsigned long long mlen,
@@ -183,7 +197,7 @@ int crypto_aead_encrypt(
 
 	/*
 	printf("ks: ");
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 12; i++) {
 		u32 ks = next_keystream(&grain);
 		print_ks(ks);
 		//print_state(&grain);
@@ -194,15 +208,21 @@ int crypto_aead_encrypt(
 	unsigned long long itr = mlen / 4;
 	unsigned long long rem = mlen % 4;
 	unsigned long long j = 0;
+	u32 rem_word;
 
 	for (unsigned long long i = 0; i < itr; i++) {
 		*(u32 *) (c + j) = next_keystream(&grain) ^ (*(u32 *) (m + j));
 		j += 4;
 	}
 
-	for (unsigned long long i = 0; i < rem; i++) {
-		
+	if (rem) {
+		rem_word = next_keystream(&grain);
+		for (unsigned long long i = 0; i < rem; i++) {
+			*(c + j) = ((u8) (rem_word >> (8 * i))) ^ *(m + j);
+		}
 	}
+
+	*clen = mlen;
 	return 0;
 }
 
@@ -229,12 +249,12 @@ int main()
 {
 	//grain_ctx grain;
 
-	/*
-	u8 m[2] = {0, 0};
-	unsigned long long mlen = 2;
-	u8 c[sizeof(m) + 8];
+	u8 m[5] = {0};
+	unsigned long long mlen = sizeof(m);
+	//u8 c[sizeof(m) + 8];
+	u8 c[5];
 	unsigned long long clen;
-	*/
+
 	u8 key[16] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
 	u8 iv[12] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
 	//u8 key[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
@@ -255,7 +275,17 @@ int main()
 	}
 
 	//grain_init(&grain, k, npub);
-	crypto_aead_encrypt(NULL, NULL, NULL, 0, NULL, 0, NULL, npub, k);
+	crypto_aead_encrypt(c, &clen, m, mlen, NULL, 0, NULL, npub, k);
+
+	printf("msg: ");
+	for (int i = 0; i < mlen; i++) {
+		printf("%02x", swapsb(m[i]));
+	}
+	printf("\ncip: ");
+	for (int i = 0; i < clen; i++) {
+		printf("%02x", swapsb(c[i]));
+	}
+	printf("\n");
 
 	
 	
