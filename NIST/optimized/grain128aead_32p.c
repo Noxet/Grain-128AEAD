@@ -5,6 +5,19 @@
 
 #include "grain128aead_32p.h"
 
+
+static const uint32_t mve0 = 0x22222222;
+static const uint32_t mve1 = 0x18181818;
+static const uint32_t mve2 = 0x07800780;
+static const uint32_t mve3 = 0x007f8000;
+static const uint32_t mve4 = 0x80000000;
+
+static const uint32_t mvo0 = 0x44444444;
+static const uint32_t mvo1 = 0x30303030;
+static const uint32_t mvo2 = 0x0f000f00;
+static const uint32_t mvo3 = 0x00ff0000;
+
+
 void print_state(grain_ctx *grain)
 {
 	u8 *nfsr = (u8 *) grain->nptr;
@@ -132,6 +145,7 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	for (int i = 0; i < 2; i++) {
 		// initialize accumulator
 		ks = next_keystream(grain);
+		// TODO: fix aliasing rules
 		*((u32 *) (grain->acc) + i) = ks;
 		grain->lfsr[i + 12] ^= *(u32 *) (key + 4 * i);
 		print_state(grain);
@@ -140,6 +154,7 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	for (int i = 0; i < 2; i++) {
 		// initialize register
 		ks = next_keystream(grain);
+		// TODO: fix aliasing rules
 		*((u32 *) (grain->reg) + i) = ks;
 		grain->lfsr[i + 14] ^= *(u32 *) (key + 8 + 4 * i);
 		print_state(grain);
@@ -149,6 +164,7 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 void grain_reinit(grain_ctx *grain)
 {
 	printf("REINIT\n");
+	// TODO: fix aliasing rules
 	*(u32 *) (grain->lfsr) = *(u32 *) (grain->lptr);
 	*(u32 *) (grain->lfsr + 1) = *(u32 *) (grain->lptr + 1);
 	*(u32 *) (grain->lfsr + 2) = *(u32 *) (grain->lptr + 2);
@@ -164,22 +180,29 @@ void grain_reinit(grain_ctx *grain)
 	grain->count = 4;
 }
 
-uint16_t compress_even(uint32_t num)
+uint16_t getmb(uint32_t num)
 {
-	// compress x using the mask 0xAAAAAAAA
-	uint32_t mv0 = 0x22222222;
-	uint32_t mv1 = 0x18181818;
-	uint32_t mv2 = 0x07800780;
-	uint32_t mv3 = 0x007f8000;
-	uint32_t mv4 = 0x80000000;
+	// compress x using the mask 0xAAAAAAAA to extract the (odd) MAC bits, LSB first
 	uint32_t t;
-
 	uint32_t x = num & 0xAAAAAAAA;
-	t = x & mv0; x = x ^ t | (t >> 1);
-	t = x & mv1; x = x ^ t | (t >> 2);
-	t = x & mv2; x = x ^ t | (t >> 4);
-	t = x & mv3; x = x ^ t | (t >> 8);
-	t = x & mv4; x = x ^ t | (t >> 16);
+	t = x & mve0; x = x ^ t | (t >> 1);
+	t = x & mve1; x = x ^ t | (t >> 2);
+	t = x & mve2; x = x ^ t | (t >> 4);
+	t = x & mve3; x = x ^ t | (t >> 8);
+	t = x & mve4; x = x ^ t | (t >> 16);
+
+	return (uint16_t) x;
+}
+
+uint16_t getkb(uint32_t num)
+{
+	// compress x using the mask 0x55555555 to extract the (even) key bits, LSB first
+	uint32_t t;
+	uint32_t x = num & 0x55555555;
+	t = x & mvo0; x = x ^ t | (t >> 1);
+	t = x & mvo1; x = x ^ t | (t >> 2);
+	t = x & mvo2; x = x ^ t | (t >> 4);
+	t = x & mvo3; x = x ^ t | (t >> 8);
 
 	return (uint16_t) x;
 }
@@ -205,18 +228,18 @@ int crypto_aead_encrypt(
 	printf("\n");
 	*/
 
-	unsigned long long itr = mlen / 4;
-	unsigned long long rem = mlen % 4;
+	unsigned long long itr = mlen / 2;
+	unsigned long long rem = mlen % 2;
 	unsigned long long j = 0;
 	u32 rem_word;
 
 	for (unsigned long long i = 0; i < itr; i++) {
-		*(u32 *) (c + j) = next_keystream(&grain) ^ (*(u32 *) (m + j));
-		j += 4;
+		*(u16 *) (c + j) = getkb(next_keystream(&grain)) ^ (*(u16 *) (m + j));
+		j += 2;
 	}
 
 	if (rem) {
-		rem_word = next_keystream(&grain);
+		rem_word = getkb(next_keystream(&grain));
 		for (unsigned long long i = 0; i < rem; i++) {
 			*(c + j) = ((u8) (rem_word >> (8 * i))) ^ *(m + j);
 		}
