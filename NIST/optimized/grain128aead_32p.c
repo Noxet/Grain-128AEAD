@@ -1,21 +1,22 @@
 
 #include <inttypes.h>
 #include <stddef.h>
+#include <string.h>
 #include <stdio.h> // TODO: remove
 
 #include "grain128aead_32p.h"
 
 
-static const uint32_t mve0 = 0x22222222;
-static const uint32_t mve1 = 0x18181818;
-static const uint32_t mve2 = 0x07800780;
-static const uint32_t mve3 = 0x007f8000;
-static const uint32_t mve4 = 0x80000000;
+static const uint32_t mvo0 = 0x22222222;
+static const uint32_t mvo1 = 0x18181818;
+static const uint32_t mvo2 = 0x07800780;
+static const uint32_t mvo3 = 0x007f8000;
+static const uint32_t mvo4 = 0x80000000;
 
-static const uint32_t mvo0 = 0x44444444;
-static const uint32_t mvo1 = 0x30303030;
-static const uint32_t mvo2 = 0x0f000f00;
-static const uint32_t mvo3 = 0x00ff0000;
+static const uint32_t mve0 = 0x44444444;
+static const uint32_t mve1 = 0x30303030;
+static const uint32_t mve2 = 0x0f000f00;
+static const uint32_t mve3 = 0x00ff0000;
 
 
 void print_state(grain_ctx *grain)
@@ -116,6 +117,13 @@ u32 next_keystream(grain_ctx *grain)
 		((ln1 >> 28) & (ln2 >> 15)) ^ ((nn0 >> 12) & (nn2 >> 31) & (ln2 >> 30));
 }
 
+void auth_accumulate(grain_ctx *grain, const u16 ms, const u16 msg)
+{
+	for (int i = 0; i < 4; i++) {
+		*((u16 *) (grain->acc) + i) ^= *((u16 *) (grain->reg) + i);
+	}
+}
+
 void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 {
 	
@@ -140,7 +148,7 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 		print_state(grain);
 	}
 
-	// add the key in the feedback, "FP(1)"
+	// add the key in the feedback, "FP(1)" and initialize auth module
 	printf("FP(1)\n");
 	for (int i = 0; i < 2; i++) {
 		// initialize accumulator
@@ -178,33 +186,34 @@ void grain_reinit(grain_ctx *grain)
 	grain->lptr = grain->lfsr;
 	grain->nptr = grain->nfsr;
 	grain->count = 4;
+	// TODO: reinitialize AUTH
 }
 
-uint16_t getmb(uint32_t num)
+uint16_t getmb(u32 num)
 {
 	// compress x using the mask 0xAAAAAAAA to extract the (odd) MAC bits, LSB first
-	uint32_t t;
-	uint32_t x = num & 0xAAAAAAAA;
-	t = x & mve0; x = x ^ t | (t >> 1);
-	t = x & mve1; x = x ^ t | (t >> 2);
-	t = x & mve2; x = x ^ t | (t >> 4);
-	t = x & mve3; x = x ^ t | (t >> 8);
-	t = x & mve4; x = x ^ t | (t >> 16);
+	register u32 t;
+	register u32 x = num & 0xAAAAAAAA;
+	t = x & mvo0; x = (x ^ t) | (t >> 1);
+	t = x & mvo1; x = (x ^ t) | (t >> 2);
+	t = x & mvo2; x = (x ^ t) | (t >> 4);
+	t = x & mvo3; x = (x ^ t) | (t >> 8);
+	t = x & mvo4; x = (x ^ t) | (t >> 16);
 
-	return (uint16_t) x;
+	return (u16) x;
 }
 
-uint16_t getkb(uint32_t num)
+uint16_t getkb(u32 num)
 {
 	// compress x using the mask 0x55555555 to extract the (even) key bits, LSB first
-	uint32_t t;
-	uint32_t x = num & 0x55555555;
-	t = x & mvo0; x = x ^ t | (t >> 1);
-	t = x & mvo1; x = x ^ t | (t >> 2);
-	t = x & mvo2; x = x ^ t | (t >> 4);
-	t = x & mvo3; x = x ^ t | (t >> 8);
+	u32 t;
+	u32 x = num & 0x55555555;
+	t = x & mve0; x = (x ^ t) | (t >> 1);
+	t = x & mve1; x = (x ^ t) | (t >> 2);
+	t = x & mve2; x = (x ^ t) | (t >> 4);
+	t = x & mve3; x = (x ^ t) | (t >> 8);
 
-	return (uint16_t) x;
+	return (u16) x;
 }
 
 int crypto_aead_encrypt(
@@ -246,6 +255,10 @@ int crypto_aead_encrypt(
 	}
 
 	*clen = mlen;
+
+	auth_accumulate(&grain, 0, 0);
+
+	print_state(&grain);
 	return 0;
 }
 

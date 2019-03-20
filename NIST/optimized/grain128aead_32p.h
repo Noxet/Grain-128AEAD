@@ -17,7 +17,7 @@ typedef struct {
 	u32 *lptr;
 	u32 *nptr;
 	u32 count;
-	u16 acc[BUF_SIZE];
+	u16 acc[4];
 	u16 reg[BUF_SIZE];
 } grain_ctx;
 
