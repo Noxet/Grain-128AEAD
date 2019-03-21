@@ -52,6 +52,20 @@ void print_state(grain_ctx *grain)
 	//	printf("%02x", *(lfsr + i));
 	}
 	printf("\nACC lsb:  ");
+	u64 a = 0;
+	for (int i = 0; i < 64; i++) {
+		a |= ((grain->acc >> i) & 1) << (63-i);
+	}
+	printf("%016lx", a);
+	
+	printf("\nREG lsb:  ");
+	u64 r = 0;
+	for (int i = 0; i < 64; i++) {
+		r |= ((grain->reg >> i) & 1) << (63-i);
+	}
+	printf("%016lx", r);
+	
+	/*
 	for (int i = 0; i < 8; i++) {
 		u8 a = 0;
 		for (int j = 0; j < 8; j++) {
@@ -67,6 +81,7 @@ void print_state(grain_ctx *grain)
 		}
 		printf("%02x", r);
 	}
+	*/
 	printf("\n\n");
 }
 
@@ -79,6 +94,41 @@ void print_ks(u32 ks)
 	printf("%08x", n);
 }
 
+void print_ks16(u16 ks)
+{
+	u16 n = 0;
+	for (int i = 0; i < 16; i++) {
+		n |= ((ks >> i) & 1) << (15-i);
+	}
+	printf("%04x\n", n);
+}
+
+void print_16(u16 ks)
+{
+	u16 n = 0;
+	for (int i = 0; i < 16; i++) {
+		n |= ((ks >> i) & 1) << (15-i);
+	}
+	printf("%04x\n", n);
+}
+
+void print_32(u32 ks)
+{
+	u32 n = 0;
+	for (int i = 0; i < 32; i++) {
+		n |= ((ks >> i) & 1) << (31-i);
+	}
+	printf("%08x\n", n);
+}
+
+void print_64(u64 ks)
+{
+	u64 n = 0;
+	for (int i = 0; i < 64; i++) {
+		n |= ((ks >> i) & 1) << (63-i);
+	}
+	printf("%016lx\n", n);
+}
 
 u32 next_keystream(grain_ctx *grain)
 {
@@ -117,11 +167,45 @@ u32 next_keystream(grain_ctx *grain)
 		((ln1 >> 28) & (ln2 >> 15)) ^ ((nn0 >> 12) & (nn2 >> 31) & (ln2 >> 30));
 }
 
-void auth_accumulate(grain_ctx *grain, const u16 ms, const u16 msg)
+void auth_accumulate(grain_ctx *grain, u16 ms, u16 msg)
 {
-	for (int i = 0; i < 4; i++) {
-		*((u16 *) (grain->acc) + i) ^= *((u16 *) (grain->reg) + i);
+	/* updates the authentication module using the 
+	 * MAC stream (ms) and the plaintext (msg)
+	 */
+	u16 mstmp = ms;
+	u16 acctmp = 0;
+	u32 regtmp = (u32) ms << 16;
+
+	for (int i = 0; i < 16; i++) {
+		u64 mask = 0x00;
+		u32 mask_rem = 0x00;
+		if (msg & 0x0001) {
+			printf("ACCUM\n");
+			mask = ~mask; // all ones
+			mask_rem = 0x0000ffff;
+		}
+
+		grain->acc ^= grain->reg & mask;
+		grain->reg >>= 1;
+
+		printf("ACCTMP: ");
+		print_16(acctmp);
+		printf("REGTMP: ");
+		print_32(regtmp);
+		acctmp ^= regtmp & mask_rem;
+		regtmp >>= 1;
+
+		mstmp >>= 1;
+
+		msg >>= 1;
+
+		printf("msgtmp: ");
+		print_ks16(msg);
 	}
+
+	grain->reg |= ((u64) ms << 48);
+	grain->acc ^= ((u64) acctmp << 48);
+
 }
 
 void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
@@ -150,20 +234,22 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 
 	// add the key in the feedback, "FP(1)" and initialize auth module
 	printf("FP(1)\n");
+	grain->acc = 0;
 	for (int i = 0; i < 2; i++) {
 		// initialize accumulator
 		ks = next_keystream(grain);
 		// TODO: fix aliasing rules
-		*((u32 *) (grain->acc) + i) = ks;
+		grain->acc |= ((u64) ks << (32 * i));
 		grain->lfsr[i + 12] ^= *(u32 *) (key + 4 * i);
 		print_state(grain);
 	}
-	
+
+	grain->reg = 0;
 	for (int i = 0; i < 2; i++) {
 		// initialize register
 		ks = next_keystream(grain);
 		// TODO: fix aliasing rules
-		*((u32 *) (grain->reg) + i) = ks;
+		grain->reg |= ((u64) ks << (32 * i));
 		grain->lfsr[i + 14] ^= *(u32 *) (key + 8 + 4 * i);
 		print_state(grain);
 	}
@@ -243,20 +329,30 @@ int crypto_aead_encrypt(
 	u32 rem_word;
 
 	for (unsigned long long i = 0; i < itr; i++) {
-		*(u16 *) (c + j) = getkb(next_keystream(&grain)) ^ (*(u16 *) (m + j));
+		printf("WRONG");
+		u32 next = next_keystream(&grain);
+		*(u16 *) (c + j) = getkb(next) ^ (*(u16 *) (m + j));
+		auth_accumulate(&grain, getmb(next), *(u16 *) (m + j));
 		j += 2;
 	}
 
 	if (rem) {
+		printf("WRONGER");
 		rem_word = getkb(next_keystream(&grain));
 		for (unsigned long long i = 0; i < rem; i++) {
-			*(c + j) = ((u8) (rem_word >> (8 * i))) ^ *(m + j);
+			*(c + j) = ((u8) (getkb(rem_word) >> (8 * i))) ^ *(m + j);
+			//accumulate(&grain, getmb(rem_word)
 		}
 	}
 
 	*clen = mlen;
 
-	auth_accumulate(&grain, 0, 0);
+	u32 ks = next_keystream(&grain);
+	print_ks16(getmb(ks));
+	auth_accumulate(&grain, getmb(ks), 0x0101);
+	
+	//ks = next_keystream(&grain);
+	//auth_accumulate(&grain, getmb(ks), 0x0180);
 
 	print_state(&grain);
 	return 0;
@@ -285,7 +381,7 @@ int main()
 {
 	//grain_ctx grain;
 
-	u8 m[5] = {0};
+	u8 m[0];// = {0};
 	unsigned long long mlen = sizeof(m);
 	//u8 c[sizeof(m) + 8];
 	u8 c[5];
