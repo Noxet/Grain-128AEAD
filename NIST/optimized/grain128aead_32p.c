@@ -180,7 +180,6 @@ void auth_accumulate(grain_ctx *grain, u16 ms, u16 msg)
 		u64 mask = 0x00;
 		u32 mask_rem = 0x00;
 		if (msg & 0x0001) {
-			printf("ACCUM\n");
 			mask = ~mask; // all ones
 			mask_rem = 0x0000ffff;
 		}
@@ -188,19 +187,12 @@ void auth_accumulate(grain_ctx *grain, u16 ms, u16 msg)
 		grain->acc ^= grain->reg & mask;
 		grain->reg >>= 1;
 
-		printf("ACCTMP: ");
-		print_16(acctmp);
-		printf("REGTMP: ");
-		print_32(regtmp);
 		acctmp ^= regtmp & mask_rem;
 		regtmp >>= 1;
 
 		mstmp >>= 1;
 
 		msg >>= 1;
-
-		printf("msgtmp: ");
-		print_ks16(msg);
 	}
 
 	grain->reg |= ((u64) ms << 48);
@@ -272,7 +264,6 @@ void grain_reinit(grain_ctx *grain)
 	grain->lptr = grain->lfsr;
 	grain->nptr = grain->nfsr;
 	grain->count = 4;
-	// TODO: reinitialize AUTH
 }
 
 uint16_t getmb(u32 num)
@@ -329,7 +320,7 @@ int crypto_aead_encrypt(
 	u32 rem_word;
 
 	for (unsigned long long i = 0; i < itr; i++) {
-		printf("WRONG");
+		printf("ENC and ACC");
 		u32 next = next_keystream(&grain);
 		*(u16 *) (c + j) = getkb(next) ^ (*(u16 *) (m + j));
 		auth_accumulate(&grain, getmb(next), *(u16 *) (m + j));
@@ -337,19 +328,20 @@ int crypto_aead_encrypt(
 	}
 
 	if (rem) {
-		printf("WRONGER");
-		rem_word = getkb(next_keystream(&grain));
-		for (unsigned long long i = 0; i < rem; i++) {
-			*(c + j) = ((u8) (getkb(rem_word) >> (8 * i))) ^ *(m + j);
-			//accumulate(&grain, getmb(rem_word)
-		}
+		rem_word = next_keystream(&grain);
+		*(c + j) = ((u8) (getkb(rem_word))) ^ *(m + j);
+		// add padding to the last byte of plaintext
+		auth_accumulate(&grain, getmb(rem_word), 0x0100 | *(m + j));
+	} else {
+		auth_accumulate(&grain, getmb(ks), 0x01);
 	}
 
 	*clen = mlen;
 
+	// padding byte
 	u32 ks = next_keystream(&grain);
 	print_ks16(getmb(ks));
-	auth_accumulate(&grain, getmb(ks), 0x0101);
+	//auth_accumulate(&grain, getmb(ks), 0x0101);
 	
 	//ks = next_keystream(&grain);
 	//auth_accumulate(&grain, getmb(ks), 0x0180);
@@ -381,7 +373,7 @@ int main()
 {
 	//grain_ctx grain;
 
-	u8 m[0];// = {0};
+	u8 m[3] = {0x00, 0x00, 0x80};
 	unsigned long long mlen = sizeof(m);
 	//u8 c[sizeof(m) + 8];
 	u8 c[5];
