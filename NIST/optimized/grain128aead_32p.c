@@ -210,8 +210,8 @@ void auth_accumulate8(grain_ctx *grain, u8 ms, u8 msg)
 	u16 regtmp = (u16) ms << 8;
 
 	for (int i = 0; i < 8; i++) {
-		u32 mask = 0x00;
-		u16 mask_rem = 0x00;
+		u64 mask = 0x00;
+		u32 mask_rem = 0x00;
 		if (msg & 0x01) {
 			mask = ~mask; // all ones
 			mask_rem = 0x00ff;
@@ -245,10 +245,10 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	grain->nptr = grain->nfsr;
 	grain->lptr = grain->lfsr;
 
-	printf("pre-init:\n");
-	print_state(grain);
+	//printf("pre-init:\n");
+	//print_state(grain);
 
-	printf("init:\n");
+	//printf("init:\n");
 	register u32 ks;
 	for (int i = 0; i < 8; i++) {
 		ks = next_keystream(grain);
@@ -258,7 +258,7 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	}
 
 	// add the key in the feedback, "FP(1)" and initialize auth module
-	printf("FP(1)\n");
+	//printf("FP(1)\n");
 	grain->acc = 0;
 	for (int i = 0; i < 2; i++) {
 		// initialize accumulator
@@ -276,7 +276,7 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 		// TODO: fix aliasing rules
 		grain->reg |= ((u64) ks << (32 * i));
 		grain->lfsr[i + 14] ^= *(u32 *) (key + 8 + 4 * i);
-		print_state(grain);
+	//	print_state(grain);
 	}
 }
 
@@ -345,10 +345,11 @@ int encode_der(unsigned long long len, u8 **der)
 
 	// one extra byte to describe the number of bytes used
 	*der = malloc(der_len + 1);
-	(*der)[0] = 0x80 | der_len;
+	(*der)[0] = 0x80 | der_len; // TODO check swap
 
 	len_tmp = len;
 	for (int i = der_len; i > 0; i--) {
+		// TODO check swap
 		(*der)[i] = len_tmp & 0xff;	// mod 256
 		len_tmp >>= 8;
 	}
@@ -368,14 +369,16 @@ int crypto_aead_encrypt(
 	grain_ctx grain;
 	grain_init(&grain, k, npub);
 
+	// authenticate length of AD
+	// encode length using DER
 	u8 *ader;
 	int aderlen = encode_der(adlen, &ader);
 	ader = realloc(ader, aderlen + adlen);
 	memcpy(ader + aderlen, ad, adlen);
 
 	printf("ADER: ");
-	for (int i = 0; i < aderlen; i++) {
-		printf("%02x", swapsb(ader[i]));
+	for (int i = 0; i < adlen; i++) { // TODO aderlen
+		printf("%02x", swapsb(ad[i])); // TODO ader
 	}
 	printf("\n\n");
 
@@ -389,8 +392,8 @@ int crypto_aead_encrypt(
 	printf("\n");
 	*/
 
-	unsigned long long itr = (aderlen + adlen) / 2; // TODO aderlen
-	unsigned long long rem = (aderlen + adlen) % 2; // TODO aderlen
+	unsigned long long itr = (adlen) / 2; // TODO aderlen
+	unsigned long long rem = (adlen) % 2; // TODO aderlen
 	printf("itr: %lld\nrem: %lld\n", itr, rem);
 	unsigned long long j = 0;
 	u32 next;
@@ -400,14 +403,14 @@ int crypto_aead_encrypt(
 	for (unsigned long long i = 0; i < itr; i++) {
 		printf("ACC\n");
 		next = next_keystream(&grain);
-		auth_accumulate(&grain, getmb(next), *(u16 *) (ader + j)); // TODO ader
+		auth_accumulate(&grain, getmb(next), *(u16 *) (ad + j)); // TODO ader
 		j += 2;
 	}
 
 	if (rem) {
 		printf("ACC REM\n");
 		rem_word = next_keystream(&grain);
-		auth_accumulate8(&grain, getmb(rem_word), *(ader + j)); // TODO ader
+		auth_accumulate8(&grain, getmb(rem_word), *(ad + j)); // TODO ader
 	}
 
 	free(ader);
@@ -437,14 +440,14 @@ int crypto_aead_encrypt(
 	}
 	
 	// append MAC to ciphertext
-	//memcpy(c + mlen, &grain.acc, 8);
-	*(u64 *) (c) = grain.acc;
+	memcpy(c + mlen, &grain.acc, 8);
+	//*(u64 *) (c + mlen) = grain.acc;
 
 	*clen = mlen + 8;
 
 	// padding byte
-	u32 ks = next_keystream(&grain);
-	print_ks16(getmb(ks));
+	//u32 ks = next_keystream(&grain);
+	//print_ks16(getmb(ks));
 	//auth_accumulate(&grain, getmb(ks), 0x0101);
 	
 	//ks = next_keystream(&grain);
@@ -478,21 +481,24 @@ int main()
 	//grain_ctx grain;
 
 	//u8 m[] = {0x00, 0x80};
-	u8 m[0];
+	u8 m[0];// = {0};
 	unsigned long long mlen = sizeof(m);
 	//u8 c[sizeof(m) + 8];
 	u8 c[sizeof(m) + 8];
 	unsigned long long clen;
 
-	u8 ad[] = {0};
+	u8 ad[10];
+	for (int i = 0; i < 10; i++) {
+		ad[i] = swapsb(i);
+	}
 	unsigned long long adlen = sizeof(ad);
 
 	//u8 key[16] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
 	//u8 iv[12] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
-	u8 key[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-	u8 iv[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-	//u8 key[16] = { 0 };
-	//u8 iv[12] = { 0 };
+	//u8 key[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+	//u8 iv[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+	u8 key[16] = { 0 };
+	u8 iv[12] = { 0 };
 
 	u8 k[16];
 	u8 npub[12];
@@ -506,8 +512,12 @@ int main()
 		npub[i] = swapsb(iv[i]);
 	}
 
+	for (int i = 0; i < 5; i++) {
+		crypto_aead_encrypt(c, &clen, m, mlen, ad, i, NULL, npub, k);
+	}
+
 	//grain_init(&grain, k, npub);
-	crypto_aead_encrypt(c, &clen, m, mlen, ad, adlen, NULL, npub, k);
+//	crypto_aead_encrypt(c, &clen, m, mlen, ad, adlen, NULL, npub, k);
 
 	printf("msg: ");
 	for (int i = 0; i < mlen; i++) {
