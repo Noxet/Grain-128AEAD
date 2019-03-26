@@ -9,13 +9,14 @@
  * 2019
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "grain128aead.h"
 
 unsigned char grain_round;
+
+unsigned char swapsb(unsigned char n);
 
 void init_grain(grain_state *grain, const unsigned char *key, const unsigned char *iv)
 {
@@ -186,7 +187,7 @@ int encode_der(unsigned long long len, unsigned char **der)
 
 	if (len < 128) {
 		*der = malloc(1);
-		(*der)[0] = len;
+		(*der)[0] = swapsb((unsigned char) len);
 		return 1;
 	}
 
@@ -198,25 +199,54 @@ int encode_der(unsigned long long len, unsigned char **der)
 
 	// one extra byte to describe the number of bytes used
 	*der = malloc(der_len + 1);
-	(*der)[0] = 0x80 | der_len;
+	(*der)[0] = 0x80 | der_len; // TODO fix swap
 
 	len_tmp = len;
 	for (int i = der_len; i > 0; i--) {
-		(*der)[i] = len_tmp & 0xff;	// mod 256
+		(*der)[i] = len_tmp & 0xff;	// mod 256 TODO fix swap
 		len_tmp >>= 8;
 	}
 
 	return der_len + 1;
 }
 
+unsigned char swapsb(unsigned char n)
+{
+	// swaps significant bit
+	unsigned char val = 0;
+	for (int i = 0; i < 8; i++) {
+		val |= ((n >> i) & 1) << (7-i);
+	}
+	return val;
+}
+
+
 int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
-	const unsigned char *m, unsigned long long mlen,
-	const unsigned char *ad, unsigned long long adlen,
+	const unsigned char *mp, unsigned long long mlen,
+	const unsigned char *adp, unsigned long long adlen,
 	const unsigned char *nsec,
-	const unsigned char *npub,
-	const unsigned char *k
+	const unsigned char *npubp,
+	const unsigned char *kp
 	)
 {
+	unsigned char *m = malloc(mlen);
+	unsigned char *ad = malloc(adlen);
+	unsigned char npub[12];
+	unsigned char k[16];
+
+	for (unsigned long long i = 0; i < mlen; i++) {
+		m[i] = swapsb(mp[i]);
+	}
+	for (unsigned long long i = 0; i < adlen; i++) {
+		ad[i] = swapsb(adp[i]);
+	}
+	for (unsigned long long i = 0; i < 12; i++) {
+		npub[i] = swapsb(npubp[i]);
+	}
+	for (unsigned long long i = 0; i < 16; i++) {
+		k[i] = swapsb(kp[i]);
+	}
+
 	grain_state grain;
 	grain_data data;
 
@@ -231,7 +261,7 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 	// append ad to buffer
 	ader = realloc(ader, aderlen + adlen);
 	memcpy(ader + aderlen, ad, adlen);
-	
+
 	unsigned long long ad_cnt = 0;
 	unsigned char adval = 0;
 
@@ -244,10 +274,12 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 				// do not encrypt
 			} else {
 				adval = ader[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
-				if (adval == 1) {
+				if (adval) {
 					accumulate(&grain);
+					//printf("acc, j = %d\n", j);
 				}
 				auth_shift(grain.auth_sr, z_next);
+				//printf("shift, j = %d\n", j);
 				ad_cnt++;
 			}
 		}
@@ -277,7 +309,7 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 				auth_shift(grain.auth_sr, z_next);
 			}
 		}
-		c[i] = cc;
+		c[i] = swapsb(cc);
 		*clen += 1;
 	}
 
@@ -294,12 +326,14 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 		for (int j = 0; j < 8; j++) {
 			acc |= grain.auth_acc[8 * acc_idx + j] << (7 - j);
 		}
-		c[i] = acc;
+		c[i] = swapsb(acc);
 		acc_idx++;
 		*clen += 1;
 	}
 
 	free(data.message);
+	free(m);
+	free(ad);
 
 	return 0;
 }
@@ -307,12 +341,29 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 int crypto_aead_decrypt(
        unsigned char *m,unsigned long long *mlen,
        unsigned char *nsec,
-       const unsigned char *c,unsigned long long clen,
-       const unsigned char *ad,unsigned long long adlen,
-       const unsigned char *npub,
-       const unsigned char *k
+       const unsigned char *cp,unsigned long long clen,
+       const unsigned char *adp,unsigned long long adlen,
+       const unsigned char *npubp,
+       const unsigned char *kp
      )
 {
+	unsigned char *c = malloc(clen);
+	unsigned char *ad = malloc(adlen);
+	unsigned char npub[12];
+	unsigned char k[16];
+
+	for (unsigned long long i = 0; i < clen; i++) {
+		c[i] = swapsb(cp[i]);
+	}
+	for (unsigned long long i = 0; i < adlen; i++) {
+		ad[i] = swapsb(adp[i]);
+	}
+	for (unsigned long long i = 0; i < 12; i++) {
+		npub[i] = swapsb(npubp[i]);
+	}
+	for (unsigned long long i = 0; i < 16; i++) {
+		k[i] = swapsb(kp[i]);
+	}
 	grain_state grain;
 	grain_data data;
 
@@ -340,7 +391,7 @@ int crypto_aead_decrypt(
 				// do not encrypt
 			} else {
 				adval = ader[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
-				if (adval == 1) {
+				if (adval) {
 					accumulate(&grain);
 				}
 				auth_shift(grain.auth_sr, z_next);
@@ -378,7 +429,7 @@ int crypto_aead_decrypt(
 			c_cnt++;
 			ac_cnt++;
 		}
-		m[i] = msgbyte;
+		m[i] = swapsb(msgbyte);
 		*mlen += 1;
 	}
 
@@ -391,10 +442,14 @@ int crypto_aead_decrypt(
 	// check MAC
 	if (memcmp(grain.auth_acc, &data.message[8*(clen-8)], 64) != 0) {
 		free(data.message);
+		free(c);
+		free(ad);
 		return -1;
 	}
 
 	free(data.message);
+	free(c);
+	free(ad);
 
 	return 0;
 }
