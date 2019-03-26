@@ -21,114 +21,6 @@ static const uint32_t mve2 = 0x0f000f00;
 static const uint32_t mve3 = 0x00ff0000;
 
 
-void print_state(grain_ctx *grain)
-{
-	u8 *nfsr = (u8 *) grain->nptr;
-	u8 *lfsr = (u8 *) grain->lptr;
-
-	printf("NFSR lsb: ");
-	for (int i = 0; i < 16; i++) {
-		u8 n = 0;
-		// print with LSB first
-		for (int j = 0; j < 8; j++) {
-			n |= (((*(nfsr + i)) >> j) & 1) << (7-j);
-		}
-		printf("%02x", n);
-	}
-	//printf("\tNFSR msb: ");
-	for (int i = 0; i < 16; i++) {
-	//	printf("%02x", *(nfsr + i));
-	}
-	printf("\nLFSR lsb: ");
-	for (int i = 0; i < 16; i++) {
-		u8 l = 0;
-		for (int j = 0; j < 8; j++) {
-			l |= (((*(lfsr + i)) >> j) & 1) << (7-j);
-		}
-		printf("%02x", l);
-	}
-	//printf("\tLFSR msb: ");
-	for (int i = 0; i < 16; i++) {
-	//	printf("%02x", *(lfsr + i));
-	}
-	printf("\nACC lsb:  ");
-	u64 a = 0;
-	for (int i = 0; i < 64; i++) {
-		a |= ((grain->acc >> i) & 1) << (63-i);
-	}
-	printf("%016lx", a);
-	
-	printf("\nREG lsb:  ");
-	u64 r = 0;
-	for (int i = 0; i < 64; i++) {
-		r |= ((grain->reg >> i) & 1) << (63-i);
-	}
-	printf("%016lx", r);
-	
-	/*
-	for (int i = 0; i < 8; i++) {
-		u8 a = 0;
-		for (int j = 0; j < 8; j++) {
-			a |= (((*(acc + i)) >> j) & 1) << (7-j);
-		}
-		printf("%02x", a);
-	}
-	printf("\nREG lsb:  ");
-	for (int i = 0; i < 8; i++) {
-		u8 r = 0;
-		for (int j = 0; j < 8; j++) {
-			r |= (((*(reg + i)) >> j) & 1) << (7-j);
-		}
-		printf("%02x", r);
-	}
-	*/
-	printf("\n\n");
-}
-
-void print_ks(u32 ks)
-{
-	u32 n = 0;
-	for (int i = 0; i < 32; i++) {
-		n |= ((ks >> i) & 1) << (31-i);
-	}
-	printf("%08x", n);
-}
-
-void print_ks16(u16 ks)
-{
-	u16 n = 0;
-	for (int i = 0; i < 16; i++) {
-		n |= ((ks >> i) & 1) << (15-i);
-	}
-	printf("%04x\n", n);
-}
-
-void print_16(u16 ks)
-{
-	u16 n = 0;
-	for (int i = 0; i < 16; i++) {
-		n |= ((ks >> i) & 1) << (15-i);
-	}
-	printf("%04x\n", n);
-}
-
-void print_32(u32 ks)
-{
-	u32 n = 0;
-	for (int i = 0; i < 32; i++) {
-		n |= ((ks >> i) & 1) << (31-i);
-	}
-	printf("%08x\n", n);
-}
-
-void print_64(u64 ks)
-{
-	u64 n = 0;
-	for (int i = 0; i < 64; i++) {
-		n |= ((ks >> i) & 1) << (63-i);
-	}
-	printf("%016lx\n", n);
-}
 
 u32 next_keystream(grain_ctx *grain)
 {
@@ -299,7 +191,7 @@ void grain_reinit(grain_ctx *grain)
 	grain->count = 4;
 }
 
-uint16_t getmb(u32 num)
+u16 getmb(u32 num)
 {
 	// compress x using the mask 0xAAAAAAAA to extract the (odd) MAC bits, LSB first
 	register u32 t;
@@ -313,11 +205,11 @@ uint16_t getmb(u32 num)
 	return (u16) x;
 }
 
-uint16_t getkb(u32 num)
+u16 getkb(u32 num)
 {
 	// compress x using the mask 0x55555555 to extract the (even) key bits, LSB first
-	u32 t;
-	u32 x = num & 0x55555555;
+	register u32 t;
+	register u32 x = num & 0x55555555;
 	t = x & mve0; x = (x ^ t) | (t >> 1);
 	t = x & mve1; x = (x ^ t) | (t >> 2);
 	t = x & mve2; x = (x ^ t) | (t >> 4);
@@ -333,7 +225,7 @@ int encode_der(unsigned long long len, u8 **der)
 
 	if (len < 128) {
 		*der = malloc(1);
-		(*der)[0] = swapsb((u8) len);
+		(*der)[0] = len;
 		return 1;
 	}
 
@@ -345,11 +237,10 @@ int encode_der(unsigned long long len, u8 **der)
 
 	// one extra byte to describe the number of bytes used
 	*der = malloc(der_len + 1);
-	(*der)[0] = 0x80 | der_len; // TODO check swap
+	(*der)[0] = 0x80 | der_len;
 
 	len_tmp = len;
 	for (int i = der_len; i > 0; i--) {
-		// TODO check swap
 		(*der)[i] = len_tmp & 0xff;	// mod 256
 		len_tmp >>= 8;
 	}
@@ -369,6 +260,9 @@ int crypto_aead_encrypt(
 	grain_ctx grain;
 	grain_init(&grain, k, npub);
 
+	*clen = 0;
+	unsigned long long mmlen = mlen;
+
 	// authenticate length of AD
 	// encode length using DER
 	u8 *ader;
@@ -376,65 +270,57 @@ int crypto_aead_encrypt(
 	ader = realloc(ader, aderlen + adlen);
 	memcpy(ader + aderlen, ad, adlen);
 
-	printf("ADER: ");
-	for (int i = 0; i < adlen; i++) { // TODO aderlen
-		printf("%02x", swapsb(ad[i])); // TODO ader
-	}
-	printf("\n\n");
 
-	/*
-	printf("ks: ");
-	for (int i = 0; i < 12; i++) {
-		u32 ks = next_keystream(&grain);
-		print_ks(ks);
-		//print_state(&grain);
-	}
-	printf("\n");
-	*/
-
-	unsigned long long itr = (adlen) / 2; // TODO aderlen
-	unsigned long long rem = (adlen) % 2; // TODO aderlen
-	printf("itr: %lld\nrem: %lld\n", itr, rem);
+	unsigned long long itr = (aderlen + adlen) / 2;
+	unsigned long long rem = (aderlen + adlen) % 2;
 	unsigned long long j = 0;
 	u32 next;
 	u32 rem_word;
 
 	// authenticate AD
 	for (unsigned long long i = 0; i < itr; i++) {
-		printf("ACC\n");
 		next = next_keystream(&grain);
-		auth_accumulate(&grain, getmb(next), *(u16 *) (ad + j)); // TODO ader
-		j += 2;
+		auth_accumulate(&grain, getmb(next), *(u16 *) (ader + j));
+		j += 2;;
 	}
 
 	if (rem) {
-		printf("ACC REM\n");
 		rem_word = next_keystream(&grain);
-		auth_accumulate8(&grain, getmb(rem_word), *(ad + j)); // TODO ader
+		auth_accumulate8(&grain, getmb(rem_word), *(ader + j));
 	}
 
 	free(ader);
 
-
-	itr = mlen / 2;
-	rem = mlen % 2;
 	j = 0;
+
+	// use the last 8 bits in rem_word for the message
+	if (rem && mlen) {
+		*(c + j) = ((u8) (getkb(rem_word) >> 8)) ^ *(m + j);
+		auth_accumulate8(&grain, getmb(rem_word) >> 8, *(m + j));
+		*clen += 1;
+		j++;
+		mmlen--; // one byte processed
+	}
+
+
+	itr = mmlen / 2;
+	rem = mmlen % 2;
 
 	// encrypt and authenticate message
 	for (unsigned long long i = 0; i < itr; i++) {
-		printf("ENC and ACC\n");
 		next = next_keystream(&grain);
 		*(u16 *) (c + j) = getkb(next) ^ (*(u16 *) (m + j));
 		auth_accumulate(&grain, getmb(next), *(u16 *) (m + j));
 		j += 2;
+		*clen += 2;
 	}
 
 	rem_word = next_keystream(&grain);
 	if (rem) {
-		printf("ENC and ACC REM\n");
 		*(c + j) = ((u8) (getkb(rem_word))) ^ *(m + j);
 		// add padding to the last byte of plaintext
 		auth_accumulate(&grain, getmb(rem_word), 0x0100 | *(m + j));
+		*clen += 1;
 	} else {
 		auth_accumulate(&grain, getmb(rem_word), 0x01);
 	}
@@ -443,17 +329,8 @@ int crypto_aead_encrypt(
 	memcpy(c + mlen, &grain.acc, 8);
 	//*(u64 *) (c + mlen) = grain.acc;
 
-	*clen = mlen + 8;
+	*clen += 8;
 
-	// padding byte
-	//u32 ks = next_keystream(&grain);
-	//print_ks16(getmb(ks));
-	//auth_accumulate(&grain, getmb(ks), 0x0101);
-	
-	//ks = next_keystream(&grain);
-	//auth_accumulate(&grain, getmb(ks), 0x0180);
-
-	print_state(&grain);
 	return 0;
 }
 
@@ -464,7 +341,82 @@ int crypto_aead_decrypt(
 	const unsigned char *ad, unsigned long long adlen,
 	const unsigned char *npub,
 	const unsigned char *k
-);
+)
+{
+	*mlen = clen - 8;
+	grain_ctx grain;
+	grain_init(&grain, k, npub);
+
+
+	// length of ciphertext, no tag
+	unsigned long long cclen = clen - 8;
+	*mlen = 0;
+
+	// authenticate length of AD
+	// encode length using DER
+	u8 *ader;
+	int aderlen = encode_der(adlen, &ader);
+	ader = realloc(ader, aderlen + adlen);
+	memcpy(ader + aderlen, ad, adlen);
+
+	unsigned long long itr = (aderlen + adlen) / 2;
+	unsigned long long rem = (aderlen + adlen) % 2;
+	unsigned long long j = 0;
+	u32 next;
+	u32 rem_word;
+
+	// authenticate AD
+	for (unsigned long long i = 0; i < itr; i++) {
+		next = next_keystream(&grain);
+		auth_accumulate(&grain, getmb(next), *(u16 *) (ader + j));
+		j += 2;
+	}
+
+	if (rem) {
+		rem_word = next_keystream(&grain);
+		auth_accumulate8(&grain, getmb(rem_word), *(ader + j));
+	}
+
+	free(ader);
+
+	j = 0;
+
+	// use the last 8 bits in rem_word for the message
+	if (rem && cclen) {
+		*(m + j) = ((u8) (getkb(rem_word) >> 8)) ^ *(c + j);
+		auth_accumulate8(&grain, getmb(rem_word) >> 8, *(m + j));
+		j++;
+		cclen--;
+		*mlen += 1;
+	}
+
+
+	itr = cclen / 2;
+	rem = cclen % 2;
+
+
+	// encrypt and authenticate message
+	for (unsigned long long i = 0; i < itr; i++) {
+		next = next_keystream(&grain);
+		*(u16 *) (m + j) = getkb(next) ^ (*(u16 *) (c + j));
+		auth_accumulate(&grain, getmb(next), *(u16 *) (m + j));
+		j += 2;
+		*mlen += 2;
+	}
+
+	rem_word = next_keystream(&grain);
+	if (rem) {
+		*(m + j) = ((u8) (getkb(rem_word))) ^ *(c + j);
+		// add padding to the last byte of plaintext
+		auth_accumulate(&grain, getmb(rem_word), 0x0100 | *(m + j));
+		*mlen += 1;
+	} else {
+		auth_accumulate(&grain, getmb(rem_word), 0x01);
+	}
+	
+
+	return 0;
+}
 
 u8 swapsb(u8 n)
 {
@@ -474,63 +426,4 @@ u8 swapsb(u8 n)
 		val |= ((n >> i) & 1) << (7-i);
 	}
 	return val;
-}
-
-int main()
-{
-	//grain_ctx grain;
-
-	//u8 m[] = {0x00, 0x80};
-	u8 m[0];// = {0};
-	unsigned long long mlen = sizeof(m);
-	//u8 c[sizeof(m) + 8];
-	u8 c[sizeof(m) + 8];
-	unsigned long long clen;
-
-	u8 ad[10];
-	for (int i = 0; i < 10; i++) {
-		ad[i] = swapsb(i);
-	}
-	unsigned long long adlen = sizeof(ad);
-
-	//u8 key[16] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
-	//u8 iv[12] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78};
-	//u8 key[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-	//u8 iv[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-	u8 key[16] = { 0 };
-	u8 iv[12] = { 0 };
-
-	u8 k[16];
-	u8 npub[12];
-
-	// change to LSB first
-	for (int i = 0; i < 16; i++) {
-		k[i] = swapsb(key[i]);
-	}
-
-	for (int i = 0; i < 12; i++) {
-		npub[i] = swapsb(iv[i]);
-	}
-
-	for (int i = 0; i < 5; i++) {
-		crypto_aead_encrypt(c, &clen, m, mlen, ad, i, NULL, npub, k);
-	}
-
-	//grain_init(&grain, k, npub);
-//	crypto_aead_encrypt(c, &clen, m, mlen, ad, adlen, NULL, npub, k);
-
-	printf("msg: ");
-	for (int i = 0; i < mlen; i++) {
-		printf("%02x", swapsb(m[i]));
-	}
-	printf("\ncip: ");
-	for (int i = 0; i < clen; i++) {
-		printf("%02x", swapsb(c[i]));
-	}
-	printf("\n");
-
-	
-	
-	//crypto_aead_encrypt(c, &clen, m, mlen, NULL, 0, NULL, npub, k);
-
 }

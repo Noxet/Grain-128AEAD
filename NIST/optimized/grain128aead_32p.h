@@ -24,6 +24,9 @@ typedef struct {
 void grain_init(grain_ctx *, const u8 *, const u8 *);
 void grain_reinit(grain_ctx *);
 u32 next_keystream(grain_ctx *);
-
+void auth_accumulate(grain_ctx *, u16, u16);
+void auth_accumulate8(grain_ctx *, u8, u8);
+u16 getmb(u32);
+u16 getkb(u32);
 
 #endif
