@@ -25,8 +25,8 @@ void print_state(grain_ctx *grain)
 {
 	u8 *nfsr = (u8 *) grain->nptr;
 	u8 *lfsr = (u8 *) grain->lptr;
-
-	printf("NFSR lsb: ");
+	
+	/*printf("NFSR lsb: ");
 	for (int i = 0; i < 16; i++) {
 		u8 n = 0;
 		// print with LSB first
@@ -35,10 +35,13 @@ void print_state(grain_ctx *grain)
 		}
 		printf("%02x", n);
 	}
-	//printf("\tNFSR msb: ");
+	*/
+	printf("\nNFSR msb: ");
 	for (int i = 0; i < 16; i++) {
-	//	printf("%02x", *(nfsr + i));
+		printf("%02x", *(nfsr + i));
 	}
+
+	/*
 	printf("\nLFSR lsb: ");
 	for (int i = 0; i < 16; i++) {
 		u8 l = 0;
@@ -47,24 +50,43 @@ void print_state(grain_ctx *grain)
 		}
 		printf("%02x", l);
 	}
-	//printf("\tLFSR msb: ");
+	*/
+
+	printf("\nLFSR msb: ");
 	for (int i = 0; i < 16; i++) {
-	//	printf("%02x", *(lfsr + i));
+		printf("%02x", *(lfsr + i));
 	}
+
+	/*
 	printf("\nACC lsb:  ");
 	u64 a = 0;
 	for (int i = 0; i < 64; i++) {
 		a |= ((grain->acc >> i) & 1) << (63-i);
 	}
 	printf("%016lx", a);
-	
+	*/
+
+	printf("\nACC msb: ");
+	for (int i = 0; i < 8; i++) {
+		printf("%02x", (u8) (grain->acc >> (8 * i)));
+	}
+
+	//printf("\nACC msb: %016lx\n", grain->acc);
+
+	/*
 	printf("\nREG lsb:  ");
 	u64 r = 0;
 	for (int i = 0; i < 64; i++) {
 		r |= ((grain->reg >> i) & 1) << (63-i);
 	}
 	printf("%016lx", r);
-	
+	*/
+
+	printf("\nREG msb: ");
+	for (int i = 0; i < 8; i++) {
+		printf("%02x", (u8) (grain->reg >> (8 * i)));
+	}
+
 	/*
 	for (int i = 0; i < 8; i++) {
 		u8 a = 0;
@@ -241,9 +263,13 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	memcpy(grain->lfsr, iv, 12);
 	*(u32 *) (grain->lfsr + 3) = (u32) 0x7fffffff; // 0xfffffffe in little endian, LSB first
 
+
 	grain->count = 4;
 	grain->nptr = grain->nfsr;
 	grain->lptr = grain->lfsr;
+	
+	printf("PRE INIT\n");
+	print_state(grain);
 
 	//printf("pre-init:\n");
 	//print_state(grain);
@@ -278,6 +304,9 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 		grain->lfsr[i + 14] ^= *(u32 *) (key + 8 + 4 * i);
 	//	print_state(grain);
 	}
+
+	printf("POST INIT\n");
+	print_state(grain);
 }
 
 void grain_reinit(grain_ctx *grain)
