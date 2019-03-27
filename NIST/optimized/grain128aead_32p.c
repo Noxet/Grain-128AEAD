@@ -7,8 +7,6 @@
 
 #include "grain128aead_32p.h"
 
-u8 swapsb(u8 n);
-
 static const uint32_t mvo0 = 0x22222222;
 static const uint32_t mvo1 = 0x18181818;
 static const uint32_t mvo2 = 0x07800780;
@@ -416,14 +414,4 @@ int crypto_aead_decrypt(
 	
 
 	return 0;
-}
-
-u8 swapsb(u8 n)
-{
-	// swaps significant bit
-	u8 val = 0;
-	for (int i = 0; i < 8; i++) {
-		val |= ((n >> i) & 1) << (7-i);
-	}
-	return val;
 }
