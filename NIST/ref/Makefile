@@ -16,7 +16,7 @@ nist: genkat_aead
 	tar -cvjf grain128aead-ref.tar.gz crypto_aead
 
 prof: genkat_aead.c grain128aead.c
-	$(CC) -Wall -O2 -g -pg -o grain_prof $?
+	$(CC) -Wall -O2 -pg -o grain_prof $?
 
 clean:
 	rm -Rf genkat_aead crypto_aead grain_prof gmon.out
