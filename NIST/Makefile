@@ -27,6 +27,8 @@ nist: ref optimized
 	# pack it up in a tar ball
 	@echo -e "\e[1;34mCreating tar ball ...\e[0m"
 	tar -cvjf grain128aead.tar.gz crypto_aead
+	# clean up
+	rm -f ref.txt LWC_AEAD_KAT_128_96.txt
 
 clean:
 	$(MAKE) -C ref clean
