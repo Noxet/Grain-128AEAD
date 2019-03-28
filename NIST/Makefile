@@ -26,7 +26,7 @@ nist: ref optimized
 	cp optimized/api.h optimized/grain128aead_32p.c optimized/grain128aead_32p.h crypto_aead/grain128aead/opt32
 	# pack it up in a tar ball
 	@echo -e "\e[1;34mCreating tar ball ...\e[0m"
-	tar -cvjf grain128aead.tar.gz crypto_aead
+	tar -cvzf grain128aead.tar.gz crypto_aead
 	# clean up
 	rm -f ref.txt LWC_AEAD_KAT_128_96.txt
 
