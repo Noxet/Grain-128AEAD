@@ -55,22 +55,22 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 		next_z(grain, 0);
 	}
 
-	grain_round = FP1;
+	grain_round = ADDKEY;
 
 	unsigned char key_idx = 0;
 	/* inititalize the accumulator and shift reg. using the first 64 bits */
 	for (int i = 0; i < 8; i++) {
 		for (int j = 0; j < 8; j++) {
-			unsigned char fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
-			grain->auth_acc[8 * i + j] = next_z(grain, fp1_fb);
+			unsigned char addkey_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			grain->auth_acc[8 * i + j] = next_z(grain, addkey_fb);
 		}
 		key_idx++;
 	}
 
 	for (int i = 0; i < 8; i++) {
 		for (int j = 0; j < 8; j++) {
-			unsigned char fp1_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
-			grain->auth_sr[8 * i + j] = next_z(grain, fp1_fb);
+			unsigned char addkey_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
+			grain->auth_sr[8 * i + j] = next_z(grain, addkey_fb);
 		}
 		key_idx++;
 	}
@@ -173,7 +173,7 @@ unsigned char next_z(grain_state *grain, unsigned char keybit)
 	if (grain_round == INIT) {
 		lfsr_out = shift(grain->lfsr, lfsr_fb ^ y);
 		shift(grain->nfsr, nfsr_fb ^ lfsr_out ^ y);
-	} else if (grain_round == FP1) {
+	} else if (grain_round == ADDKEY) {
 		lfsr_out = shift(grain->lfsr, lfsr_fb ^ keybit);
 		shift(grain->nfsr, nfsr_fb ^ lfsr_out);
 	} else if (grain_round == NORMAL) {

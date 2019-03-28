@@ -4,7 +4,7 @@
 #define STREAM_BYTES	16
 #define MSG_BYTES		0
 
-enum GRAIN_ROUND {INIT, FP1, NORMAL};
+enum GRAIN_ROUND {INIT, ADDKEY, NORMAL};
 
 typedef struct {
 	unsigned char lfsr[128];
@@ -13,7 +13,6 @@ typedef struct {
 	unsigned char auth_sr[64];
 } grain_state;
 
-// TODO: add struct with output: keystream and optionally macstream and tag
 typedef struct {
 	unsigned char *message;
 	unsigned long long msg_len;
