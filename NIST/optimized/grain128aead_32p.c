@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h> // TODO: remove
 
 #include "grain128aead_32p.h"
 
@@ -125,7 +124,6 @@ void auth_accumulate8(grain_ctx *grain, u8 ms, u8 msg)
 
 void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 {
-	
 	// load key, and IV along with padding
 	memcpy(grain->nfsr, key, 16);
 	memcpy(grain->lfsr, iv, 12);
@@ -135,10 +133,6 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	grain->nptr = grain->nfsr;
 	grain->lptr = grain->lfsr;
 
-	//printf("pre-init:\n");
-	//print_state(grain);
-
-	//printf("init:\n");
 	register u32 ks;
 	for (int i = 0; i < 8; i++) {
 		ks = next_keystream(grain);
@@ -148,12 +142,10 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	}
 
 	// add the key in the feedback, "FP(1)" and initialize auth module
-	//printf("FP(1)\n");
 	grain->acc = 0;
 	for (int i = 0; i < 2; i++) {
 		// initialize accumulator
 		ks = next_keystream(grain);
-		// TODO: fix aliasing rules
 		grain->acc |= ((u64) ks << (32 * i));
 		grain->lfsr[i + 12] ^= *(u32 *) (key + 4 * i);
 		//print_state(grain);
@@ -163,7 +155,6 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 	for (int i = 0; i < 2; i++) {
 		// initialize register
 		ks = next_keystream(grain);
-		// TODO: fix aliasing rules
 		grain->reg |= ((u64) ks << (32 * i));
 		grain->lfsr[i + 14] ^= *(u32 *) (key + 8 + 4 * i);
 	//	print_state(grain);
@@ -307,7 +298,11 @@ int crypto_aead_encrypt(
 	// encrypt and authenticate message
 	for (unsigned long long i = 0; i < itr; i++) {
 		next = next_keystream(&grain);
-		*(u16 *) (c + j) = getkb(next) ^ (*(u16 *) (m + j));
+		//*(u16 *) (c + j) = getkb(next) ^ (*(u16 *) (m + j));
+		u16 tmp;
+		memcpy(&tmp, (m + j), 2);
+		tmp = getkb(next) ^ tmp;
+		memcpy((c + j), &tmp, 2);
 		auth_accumulate(&grain, getmb(next), *(u16 *) (m + j));
 		j += 2;
 		*clen += 2;
@@ -325,7 +320,6 @@ int crypto_aead_encrypt(
 	
 	// append MAC to ciphertext
 	memcpy(c + mlen, &grain.acc, 8);
-	//*(u64 *) (c + mlen) = grain.acc;
 
 	*clen += 8;
 
@@ -341,7 +335,6 @@ int crypto_aead_decrypt(
 	const unsigned char *k
 )
 {
-	*mlen = clen - 8;
 	grain_ctx grain;
 	grain_init(&grain, k, npub);
 
@@ -392,11 +385,14 @@ int crypto_aead_decrypt(
 	itr = cclen / 2;
 	rem = cclen % 2;
 
-
 	// encrypt and authenticate message
 	for (unsigned long long i = 0; i < itr; i++) {
 		next = next_keystream(&grain);
-		*(u16 *) (m + j) = getkb(next) ^ (*(u16 *) (c + j));
+		//*(u16 *) (m + j) = getkb(next) ^ (*(u16 *) (c + j));
+		u16 tmp;
+		memcpy(&tmp, (c + j), 2);
+		tmp = getkb(next) ^ tmp;
+		memcpy((m + j), &tmp, 2);
 		auth_accumulate(&grain, getmb(next), *(u16 *) (m + j));
 		j += 2;
 		*mlen += 2;
@@ -411,7 +407,11 @@ int crypto_aead_decrypt(
 	} else {
 		auth_accumulate(&grain, getmb(rem_word), 0x01);
 	}
-	
+
+	if (memcmp(&grain.acc, (c + (clen-8)), 8) != 0) {
+		memset(m, 0, *mlen);
+		return -1;
+	}
 
 	return 0;
 }

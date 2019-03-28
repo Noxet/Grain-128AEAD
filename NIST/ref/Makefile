@@ -15,5 +15,8 @@ nist: genkat_aead
 	@echo -e "\e[1;34mCreating tar ball ...\e[0m"
 	tar -cvjf grain128aead-ref.tar.gz crypto_aead
 
+prof: genkat_aead.c grain128aead.c
+	$(CC) -Wall -O2 -g -pg -o grain_prof $?
+
 clean:
-	rm -Rf genkat_aead crypto_aead
+	rm -Rf genkat_aead crypto_aead grain_prof gmon.out

@@ -5,6 +5,10 @@
  * It is written to be as close to a hardware implementation as possible,
  * hence it should not be used in benchmarks due to bad performance.
  *
+ * Since the optimized version reads the LSB first of a byte, we here perform
+ * that transformation of all user provided buffers in order to generate
+ * the same test vectors.
+ *
  * Jonathan Sönnerup
  * 2019
  */
@@ -195,15 +199,15 @@ int encode_der(unsigned long long len, unsigned char **der)
 	do {
 		len_tmp >>= 8;
 		der_len++;
-	} while (len != 0);
+	} while (len_tmp != 0);
 
 	// one extra byte to describe the number of bytes used
 	*der = malloc(der_len + 1);
-	(*der)[0] = 0x80 | der_len; // TODO fix swap
+	(*der)[0] = swapsb(0x80 | der_len);
 
 	len_tmp = len;
 	for (int i = der_len; i > 0; i--) {
-		(*der)[i] = len_tmp & 0xff;	// mod 256 TODO fix swap
+		(*der)[i] = swapsb(len_tmp & 0xff);
 		len_tmp >>= 8;
 	}
 
@@ -229,6 +233,10 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 	const unsigned char *kp
 	)
 {
+	/* This implementation assumes that the most significant bit is processed first,
+	 * in a byte. The optimized version however, processes the lsb first.
+	 * In order to give the same test vectors, we here change the interpretation of the bits.
+	 */
 	unsigned char *m = malloc(mlen);
 	unsigned char *ad = malloc(adlen);
 	unsigned char npub[12];
@@ -276,10 +284,8 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 				adval = ader[ad_cnt / 8] & (1 << (7 - (ad_cnt % 8)));
 				if (adval) {
 					accumulate(&grain);
-					//printf("acc, j = %d\n", j);
 				}
 				auth_shift(grain.auth_sr, z_next);
-				//printf("shift, j = %d\n", j);
 				ad_cnt++;
 			}
 		}
@@ -347,6 +353,10 @@ int crypto_aead_decrypt(
        const unsigned char *kp
      )
 {
+	/* This implementation assumes that the most significant bit is processed first,
+	 * in a byte. The optimized version however, processes the lsb first.
+	 * In order to give the same test vectors, we here change the interpretation of the bits.
+	 */
 	unsigned char *c = malloc(clen);
 	unsigned char *ad = malloc(adlen);
 	unsigned char npub[12];

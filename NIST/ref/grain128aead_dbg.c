@@ -27,7 +27,8 @@ void print_state(grain_state *grain)
 		for (int j = 0; j < 8; j++) {
 			n |= grain->nfsr[i * 8 + j] << (7-j);
 		}
-		printf("%02x", n);
+		//printf("%02x", n);
+		printf("%02x", swapsb(n));
 	}
 	printf("\nLFSR: ");
 	for (int i = 0; i < 16; i++) {
@@ -35,7 +36,8 @@ void print_state(grain_state *grain)
 		for (int j = 0; j < 8; j++) {
 			l |= (grain->lfsr[i * 8 + j] << (7-j));
 		}
-		printf("%02x", l);
+		//printf("%02x", l);
+		printf("%02x", swapsb(l));
 	}
 	printf("\nACC: ");
 	for (int i = 0; i < 8; i++) {
@@ -43,7 +45,8 @@ void print_state(grain_state *grain)
 		for (int j = 0; j < 8; j++) {
 			a |= (grain->auth_acc[i * 8 + j] << (7-j));
 		}
-		printf("%02x", a);
+		//printf("%02x", a);
+		printf("%02x", swapsb(a));
 	}
 	printf("\nREG: ");
 	for (int i = 0; i < 8; i++) {
@@ -51,7 +54,8 @@ void print_state(grain_state *grain)
 		for (int j = 0; j < 8; j++) {
 			r |= (grain->auth_sr[i * 8 + j] << (7-j));
 		}
-		printf("%02x", r);
+		//printf("%02x", r);
+		printf("%02x", swapsb(r));
 	}
 
 	printf("\n");
@@ -84,6 +88,9 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 		grain->auth_sr[i] = 0;
 	}
 
+	printf("PRE INIT\n");
+	print_state(grain);
+
 	/* initialize grain and skip output */
 	grain_round = INIT;
 	for (int i = 0; i < 256; i++) {
@@ -111,6 +118,9 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 	}
 
 	grain_round = NORMAL;
+
+	printf("POST INIT");
+	print_state(grain);
 }
 
 void init_data(grain_data *data, const unsigned char *msg, unsigned long long msg_len)
@@ -373,6 +383,8 @@ int crypto_aead_encrypt(unsigned char *c, unsigned long long *clen,
 	next_z(&grain, 0);
 	// the 1 in the padding means accumulation
 	accumulate(&grain);
+
+	printf("PAD\n");
 	print_state(&grain);
 
 	/* append MAC to ciphertext */
