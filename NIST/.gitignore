@@ -3,3 +3,4 @@ grain128aead
 grain128aead_32p
 **/*.tar*
 **/*.zip
+crypto_aead
