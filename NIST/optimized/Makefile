@@ -4,8 +4,6 @@ CFLAGS = -std=c99 -Wall -Wextra -Wshadow -fsanitize=address,undefined -O2
 
 all: genkat_aead
 
-grain128aead_32p: grain128aead_32p.c
-
 genkat_aead: genkat_aead.c grain128aead_32p.c
 
 nist: genkat_aead
@@ -17,5 +15,8 @@ nist: genkat_aead
 	@echo -e "\e[1;34mCreating tar ball ...\e[0m"
 	tar -cvjf grain128aead-opt32.tar.gz crypto_aead
 
+prof: genkat_aead.c grain128aead_32p.c
+	$(CC) -Wall -O2 -g -pg -o grain_prof32 $?
+
 clean:
-	rm -Rf genkat_aead crypto_aead grain128aead_32p
+	rm -Rf genkat_aead crypto_aead grain128aead_32p grain_prof32 gmon.out

@@ -28,5 +28,6 @@ void auth_accumulate(grain_ctx *, u16, u16);
 void auth_accumulate8(grain_ctx *, u8, u8);
 u16 getmb(u32);
 u16 getkb(u32);
+int encode_der(unsigned long long len, u8 **);
 
 #endif

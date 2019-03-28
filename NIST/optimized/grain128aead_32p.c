@@ -1,3 +1,16 @@
+/*
+ * An optimized version of Grain128-AEAD.
+ *
+ * This implementation utilizes the full level of
+ * parallelization of Grain. It processes 32 bits at a time
+ * for maximum throughput. Due to the endianess on most machines
+ * being little endian, we interpret every byte with LSB first,
+ * in order for the bit streams to be in the expected order
+ * (but backwards).
+ *
+ * Jonathan Sönnerup
+ * 2019
+ */
 
 #include <inttypes.h>
 #include <stddef.h>
@@ -138,7 +151,6 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 		ks = next_keystream(grain);
 		grain->nfsr[i + 4] ^= ks;
 		grain->lfsr[i + 4] ^= ks;
-		//print_state(grain);
 	}
 
 	// add the key in the feedback, "FP(1)" and initialize auth module
@@ -148,7 +160,6 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 		ks = next_keystream(grain);
 		grain->acc |= ((u64) ks << (32 * i));
 		grain->lfsr[i + 12] ^= *(u32 *) (key + 4 * i);
-		//print_state(grain);
 	}
 
 	grain->reg = 0;
@@ -157,14 +168,11 @@ void grain_init(grain_ctx *grain, const u8 *key, const u8 *iv)
 		ks = next_keystream(grain);
 		grain->reg |= ((u64) ks << (32 * i));
 		grain->lfsr[i + 14] ^= *(u32 *) (key + 8 + 4 * i);
-	//	print_state(grain);
 	}
 }
 
 void grain_reinit(grain_ctx *grain)
 {
-	printf("REINIT\n");
-	// TODO: fix aliasing rules
 	*(u32 *) (grain->lfsr) = *(u32 *) (grain->lptr);
 	*(u32 *) (grain->lfsr + 1) = *(u32 *) (grain->lptr + 1);
 	*(u32 *) (grain->lfsr + 2) = *(u32 *) (grain->lptr + 2);
@@ -222,7 +230,7 @@ int encode_der(unsigned long long len, u8 **der)
 	do {
 		len_tmp >>= 8;
 		der_len++;
-	} while (len != 0);
+	} while (len_tmp != 0);
 
 	// one extra byte to describe the number of bytes used
 	*der = malloc(der_len + 1);
@@ -258,7 +266,6 @@ int crypto_aead_encrypt(
 	int aderlen = encode_der(adlen, &ader);
 	ader = realloc(ader, aderlen + adlen);
 	memcpy(ader + aderlen, ad, adlen);
-
 
 	unsigned long long itr = (aderlen + adlen) / 2;
 	unsigned long long rem = (aderlen + adlen) % 2;
