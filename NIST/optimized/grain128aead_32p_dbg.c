@@ -403,6 +403,12 @@ int crypto_aead_encrypt(
 	printf("ENCRYPT\n");
 	printf("MLEN: %lld\n", mlen);
 
+	printf("PT: ");
+	for (int i = 0; i < mlen; i++) {
+		printf("%02x", m[i]);
+	}
+	printf("\n");
+
 	// authenticate length of AD
 	// encode length using DER
 	u8 *ader;
@@ -412,7 +418,7 @@ int crypto_aead_encrypt(
 
 	printf("ADER: ");
 	for (int i = 0; i < adlen; i++) {
-		printf("%02x", swapsb(ad[i]));
+		printf("%02x", ad[i]);
 	}
 	printf("\n\n");
 
