@@ -24,12 +24,25 @@ unsigned char swapsb(unsigned char n);
 
 void init_grain(grain_state *grain, const unsigned char *key, const unsigned char *iv)
 {
+	unsigned char key_bits[128];
+	unsigned char iv_bits[96];
+
 	// expand the packed bytes and place one bit per array cell (like a flip flop in HW)
+	for (int i = 0; i < 16; i++) {
+		for (int j = 0; j < 8; j++) {
+			key_bits[8 * i + j] = (key[i] & (1 << (7-j))) >> (7-j);
+		}
+	}
+	
 	for (int i = 0; i < 12; i++) {
 		for (int j = 0; j < 8; j++) {
-			grain->lfsr[8 * i + j] = (iv[i] & (1 << (7-j))) >> (7-j);
-
+			iv_bits[8 * i + j] = (iv[i] & (1 << (7-j))) >> (7-j);
 		}
+	}
+
+	/* set up LFSR */
+	for (int i = 0; i < 96; i++) {
+		grain->lfsr[i] = iv_bits[i];
 	}
 
 	for (int i = 96; i < 127; i++) {
@@ -38,10 +51,9 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 
 	grain->lfsr[127] = 0;
 
-	for (int i = 0; i < 16; i++) {
-		for (int j = 0; j < 8; j++) {
-			grain->nfsr[8 * i + j] = (key[i] & (1 << (7-j))) >> (7-j);
-		}
+	/* set up NFSR */
+	for (int i = 0; i < 128; i++) {
+		grain->nfsr[i] = key_bits[i];
 	}
 
 	for (int i = 0; i < 64; i++) {
@@ -59,19 +71,15 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 
 	unsigned char key_idx = 0;
 	/* inititalize the accumulator and shift reg. using the first 64 bits */
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < 8; j++) {
-			unsigned char addkey_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
-			grain->auth_acc[8 * i + j] = next_z(grain, addkey_fb);
-		}
+	for (int i = 0; i < 64; i++) {
+		unsigned char addkey_fb = key_bits[i];
+		grain->auth_acc[i] = next_z(grain, addkey_fb);
 		key_idx++;
 	}
 
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < 8; j++) {
-			unsigned char addkey_fb = (key[key_idx] & (1 << (7-j))) >> (7-j);
-			grain->auth_sr[8 * i + j] = next_z(grain, addkey_fb);
-		}
+	for (int i = 0; i < 64; i++) {
+		unsigned char addkey_fb = key_bits[64 + i];
+		grain->auth_sr[i] = next_z(grain, addkey_fb);
 		key_idx++;
 	}
 
