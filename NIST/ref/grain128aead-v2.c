@@ -1,5 +1,5 @@
 /*
- * The reference implementation of Grain128-AEAD.
+ * The reference implementation of Grain128-AEADv2.
  * 
  * Note that this implementation is *not* meant to be run in software.
  * It is written to be as close to a hardware implementation as possible,
@@ -10,13 +10,13 @@
  * the same test vectors.
  *
  * Jonathan Sönnerup
- * 2019
+ * 2021
  */
 
 #include <stdlib.h>
 #include <string.h>
 
-#include "grain128aead.h"
+#include "grain128aead-v2.h"
 
 unsigned char grain_round;
 
