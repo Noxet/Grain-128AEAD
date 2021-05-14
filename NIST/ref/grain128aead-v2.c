@@ -63,7 +63,7 @@ void init_grain(grain_state *grain, const unsigned char *key, const unsigned cha
 
 	/* initialize grain and skip output */
 	grain_round = INIT;
-	for (int i = 0; i < 256; i++) {
+	for (int i = 0; i < 320; i++) {
 		next_z(grain, 0, 0);
 	}
 
@@ -184,8 +184,8 @@ unsigned char next_z(grain_state *grain, unsigned char keybit, unsigned char key
 		lfsr_out = shift(grain->lfsr, lfsr_fb ^ y);
 		shift(grain->nfsr, nfsr_fb ^ lfsr_out ^ y);
 	} else if (grain_round == ADDKEY) {
-		lfsr_out = shift(grain->lfsr, lfsr_fb ^ y ^ keybit);
-		shift(grain->nfsr, nfsr_fb ^ lfsr_out ^ y ^ keybit_64);
+		lfsr_out = shift(grain->lfsr, lfsr_fb ^ y ^ keybit_64);
+		shift(grain->nfsr, nfsr_fb ^ lfsr_out ^ y ^ keybit);
 	} else if (grain_round == NORMAL) {
 		lfsr_out = shift(grain->lfsr, lfsr_fb);
 		shift(grain->nfsr, nfsr_fb ^ lfsr_out);

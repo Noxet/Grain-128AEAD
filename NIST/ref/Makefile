@@ -2,6 +2,8 @@
 CC = gcc
 CFLAGS = -std=c99 -Wall -Wextra -Wshadow -fsanitize=address,undefined -O2
 
+.PHONY: nist prof genkat
+
 all: genkat_aead
 
 genkat_aead: genkat_aead.c grain128aead-v2.c
