@@ -4,7 +4,7 @@ CFLAGS = -std=c99 -Wall -Wextra -Wshadow -fsanitize=address,undefined -O2
 
 all: grain128aead
 
-init: CFLAGS += -DINIT
+init: CFLAGS += -DPRINT_INIT
 init: grain128aead
 
 pre: CFLAGS += -DPRE
