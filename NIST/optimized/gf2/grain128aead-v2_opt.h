@@ -1,6 +1,6 @@
 /*
  * Algorithm     : Grain128-AEADv2
- * Implementation: C/C++, 64-bit, semi-optimised
+ * Implementation: C/C++, 64-bit/SIMD, semi-optimised
  * Endianness    : Little endian
  * Author        : Alexander Maximov
  * Year          : 2021
@@ -12,20 +12,17 @@
 // ------------------------------------------------------------------
 // Build configuration
 // ------------------------------------------------------------------
-#define GRAIN_USE_SIMD 1	/* Set to 1 for a version that uses SIMD                         */
-#define GRAIN_USE_AVX512 1	/* Set to 1 if the platform supports AVX-512 set of instructions */
-#define GRAIN_USE_GF2 1		/* Set to 1 if the platform supports GF2 set of instructions     */
+#define GRAIN_USE_SIMD   1  /* Set to 1 for a version that uses SIMD                         */
+#define GRAIN_USE_AVX512 1  /* Set to 1 if the platform supports AVX-512 set of instructions */
+#define GRAIN_USE_GF2    1  /* Set to 1 if the platform supports GF2 set of instructions     */
 
 // #define __GRAIN_DEBUG_PRINTS__  /* Printouts the Grain state for debugging purposes       */
-#define __GRAIN_STACK_SAFE__       /* Define the flag to make stack-safe code                */
+#define __GRAIN_STACK_SAFE__       /* Define this flag to make stack-safe code                */
 
 // ------------------------------------------------------------------
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS
 #endif
-
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <stdint.h>
 typedef uint8_t		u8;
@@ -64,7 +61,6 @@ typedef struct
 // ------------------------------------------------------------------
 // NIST API
 // ------------------------------------------------------------------
-
 extern int crypto_aead_encrypt(
 	unsigned char *c, unsigned long long *clen,
 	const unsigned char *m, unsigned long long mlen,

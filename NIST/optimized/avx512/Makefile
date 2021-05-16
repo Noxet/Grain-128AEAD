@@ -1,6 +1,6 @@
 
 CC = g++
-CFLAGS = -std=c++11 -msse3 -mavx512f -mavx512vl -mpclmul -Wall -Wextra -Wshadow -fsanitize=address,undefined -O2
+CFLAGS = -std=c++11 -msse3 -mavx512f -mavx512vl -mpclmul -march=native -Wall -Wextra -Wshadow -fsanitize=address,undefined -O2
 
 all: genkat_aead
 

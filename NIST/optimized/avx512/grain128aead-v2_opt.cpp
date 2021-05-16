@@ -1,6 +1,6 @@
 /*
  * Algorithm     : Grain128-AEADv2
- * Implementation: C/C++, 64-bit, semi-optimised
+ * Implementation: C/C++, 64-bit/SIMD, semi-optimised
  * Endianness    : Little endian
  * Author        : Alexander Maximov
  * Year          : 2021
@@ -29,11 +29,11 @@ static inline u32 grain_keystream32(grain_ctx *grain)
 	printf("=== time %d ===\n", ctr);
 	printf("A=%016llx R=%016llx S=%016llx A^R=%016llx\n", grain->A, grain->R, grain->S, grain->A ^ grain->R);
 	printf("LFSR="); for (int i = 0; i < 16; i++) printf("%02x ", (int)grain->lfsr[i]); printf("\n");
-	printf("NFSR="); for (int i = 0; i < 16; i++) printf("%02x ", (int)grain->nfsr[i]);printf("\n");
+	printf("NFSR="); for (int i = 0; i < 16; i++) printf("%02x ", (int)grain->nfsr[i]); printf("\n");
 	ctr += 32;
 #endif
 
-#if 0 /* Legacy expressions for debug purposes */
+#if 0 /* Legacy expressions for debugging purposes */
 #define st(x)  (u32)(*(u64*)(grain->lfsr + ((x)/8) ) >> ((x)%8))
 #define bt(x)  (u32)(*(u64*)(grain->nfsr + ((x)/8) ) >> ((x)%8))
 
@@ -251,7 +251,7 @@ static inline void grain_auth(grain_ctx *grain, u8 * data, int bytes)
 	int bits = bytes << 3;
 
 #ifdef __GRAIN_STACK_SAFE__
-	if (bytes==8)
+	if (bytes == 8)
 		msg = _byteswap_uint64(*(u64*)data);
 	else
 	{	msg = 0;
@@ -338,7 +338,7 @@ static inline void grain_getz(grain_ctx *grain)
 	tmp = (x ^ (x >> 8)) & 0x0000ff000000ff00ULL; x ^= tmp ^ (tmp << 8); // ...
 	tmp = (x ^ (x >> 16)) & 0x00000000ffff0000ULL; x ^= tmp ^ (tmp << 16);
 	grain->S = x >> 32;
-	*(u32*)grain->z = x;
+	*(u32*)grain->z = (u32)x;
 }
 
 /* Classical bitwise solution, variable length = [0..4] */
@@ -409,7 +409,7 @@ static inline int grain_aead_encdec(
 		grain_getz(&grain);
 	}
 
-	grain_auth(&grain, der + i, der_len - i);
+	grain_auth(&grain, der + i, der_len - (int)i);
 
 	// Authenticate AD
 	long long rem = GRAIN_Z_BLOCK - (der_len % GRAIN_Z_BLOCK);
@@ -441,7 +441,7 @@ static inline int grain_aead_encdec(
 	{
 		for (int j = 0; j < i; j++)
 			c[j] = m[j] ^ grain.z[GRAIN_Z_BLOCK - rem + j];
-		grain_auth(&grain, (u8*)c, i);
+		grain_auth(&grain, (u8*)c, (int)i);
 
 		grain_getz(&grain);
 		for (; i <= ((long long)mlen - GRAIN_Z_BLOCK); i += GRAIN_Z_BLOCK)
@@ -453,7 +453,7 @@ static inline int grain_aead_encdec(
 
 		for (rem = 0; i < (long long)mlen; i++, rem++)
 			c[i] = m[i] ^ grain.z[rem];
-		grain_auth(&grain, (u8*)c + i - rem, (long long)mlen - i + rem);
+		grain_auth(&grain, (u8*)c + i - rem, (int)((long long)mlen - i + rem));
 
 		*clen = i;
 		// verify MAC
@@ -462,7 +462,7 @@ static inline int grain_aead_encdec(
 	}
 	else
 	{
-		grain_auth(&grain, (u8*)m, i);
+		grain_auth(&grain, (u8*)m, (int)i);
 		for (int j = 0; j < i; j++)
 			c[j] = m[j] ^ grain.z[GRAIN_Z_BLOCK - rem + j];
 
@@ -475,7 +475,7 @@ static inline int grain_aead_encdec(
 			grain_getz(&grain);
 		}
 
-		grain_auth(&grain, (u8*)m + i, (long long)mlen - i);
+		grain_auth(&grain, (u8*)m + i, (int)((long long)mlen - i));
 		for (rem = 0; i < (long long)mlen; i++, rem++)
 			c[i] = m[i] ^ grain.z[rem];
 
